@@ -536,7 +536,7 @@ class PlayerSpawnPositionTool(PlayerPositionTool):
 
                 if 59 < pos[1] < 63:
                     pos[1] = 63
-                    status += _("Spawn point moved upward to y=63.\n")
+                    status += ("Spawn point moved upward to y=63.\n")
 
                 if not okayAboveSpawn(level, pos):
                     if pos[1] > 63 or pos[1] < 59:

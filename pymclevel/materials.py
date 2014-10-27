@@ -147,12 +147,25 @@ class MCMaterials(object):
         toReturn = []
         name = name.lower()
         spiltNames = name.split(" ")
-        for n in spiltNames:
-            for v in self.allBlocks:
-                if n in v.name.lower() or n in v.aka.lower():
-                    toReturn.append(v)
-        #return toReturn
-        return [v for v in self.allBlocks if name in v.name.lower() or name in v.aka.lower()]
+        amount = len(spiltNames)
+        for v in self.allBlocks:
+            nameParts = v.name.lower().split(" ")
+            for anotherName in v.aka.lower().split(" "):
+                nameParts.append(anotherName)
+            i = 0
+            spiltNamesUsed = []
+            for v2 in nameParts:
+                Start = True
+                j = 0
+                while j < len(spiltNames) and Start == True:
+                    if spiltNames[j] in v2 and not j in spiltNamesUsed:
+                        i += 1
+                        spiltNamesUsed.append(j)
+                        Start = False
+                    j += 1
+            if i == amount:
+                toReturn.append(v)
+        return toReturn
 
     def blockWithID(self, id, data=0):
         if (id, data) in self.blocksByID:

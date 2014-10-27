@@ -252,7 +252,8 @@ class NudgeBlocksOperation(Operation):
             level.removeEntitiesInBox(self.sourceBox)
             level.removeEntitiesInBox(self.destBox)
             staticCommandsNudge = leveleditor.Settings.staticCommandsNudge.get()
-            level.copyBlocksFrom(tempSchematic, tempSchematic.bounds, self.destBox.origin, staticCommands=staticCommandsNudge)
+            moveSpawnerPosNudge = leveleditor.Settings.moveSpawnerPosNudge.get()
+            level.copyBlocksFrom(tempSchematic, tempSchematic.bounds, self.destBox.origin, staticCommands=staticCommandsNudge, moveSpawnerPos=moveSpawnerPosNudge)
             self.editor.invalidateBox(dirtyBox)
 
             self.nudgeSelection.perform(recordUndo)
@@ -503,6 +504,13 @@ class SelectionTool(EditorTool):
     def nudgeBlocks(self, dir):
         if pygame.key.get_mods() & pygame.KMOD_SHIFT:
             dir = dir * (16, 16, 16)
+
+        points = self.getSelectionPoints()
+        bounds = self.editor.level.bounds
+
+        if not all((p + dir) in bounds for p in points):
+            return
+
         op = NudgeBlocksOperation(self.editor, self.editor.level, self.selectionBox(), dir)
 
         self.editor.addOperation(op)

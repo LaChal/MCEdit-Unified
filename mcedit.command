@@ -4,19 +4,18 @@ ask() {
     # http://djm.me/ask
     while true; do
  
-        if [ "${2:-}" = "Y" ]; then
-            prompt="Y/n"
+        if [ "${2:-}" = "R" ]; then
             default=Y
-        elif [ "${2:-}" = "N" ]; then
-            prompt="y/N"
-            default=N
+        elif [ "${2:-}" = "enter" ]; then
+            default=Y
+        elif [ "${2:-}" = "Y" ]; then
+            default=Y
         else
-            prompt="y/n"
-            default=
+            default=N
         fi
  
         # Ask the question
-        read -p "$1 [$prompt] " REPLY
+        read -p "$1 " REPLY
  
         # Default?
         if [ -z "$REPLY" ]; then
@@ -25,8 +24,8 @@ ask() {
  
         # Check if the reply is valid
         case "$REPLY" in
-            Y*|y*) return 0 ;;
-            N*|n*) return 1 ;;
+            R*|r*) return 0 ;;
+                *) return 1 ;;
         esac
  
     done
@@ -36,7 +35,7 @@ ask() {
 cd "$(dirname "$0")"
 python -B mcedit.py
 echo "-------------------------"
-if ask "Run again?"; then
+if ask "Press R to restart MCEdit, any other key to exit:"; then
 	clear
 	bash mcedit.command
 else

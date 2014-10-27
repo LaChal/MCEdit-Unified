@@ -33,9 +33,9 @@ if sys.platform == "win32":
         plat = "win32"
     if platform.architecture()[0] == "64bit":
         plat = "win-amd64"
-    sys.path.append(join(directories.dataDir, "pymclevel", "build", "lib." + plat + "-2.6").encode(enc))
+    sys.path.append(join(directories.getDataDir(), "pymclevel", "build", "lib." + plat + "-2.6").encode(enc))
 
-os.environ["YAML_ROOT"] = join(directories.dataDir, "pymclevel").encode(enc)
+os.environ["YAML_ROOT"] = join(directories.getDataDir(), "pymclevel").encode(enc)
 
 from pygame import display
 
@@ -43,13 +43,14 @@ from albow import request_new_filename, request_old_filename
 #-#
 from albow.translate import _
 #-#
-from pymclevel import saveFileDir, getMinecraftProfileDirectory, getSelectedProfile
+from pymclevel import minecraftSaveFileDir, getMinecraftProfileDirectory, getSelectedProfile
 from pymclevel import items
 
 import shutil
 
 texturePacksDir = os.path.join(getMinecraftProfileDirectory(getSelectedProfile()), "texturepacks")
-
+#Compatibility layer for filters:
+filtersDir = directories.filtersDir
 
 def getTexturePacks():
     try:
@@ -95,6 +96,7 @@ else:
     option_name = "Alt"
 
 def OSXVersionChecker(name,compare):
+    """Rediculously complicated function to compare current System version to inputted version."""
     if compare != 'gt' and compare != 'lt' and compare != 'eq' and compare != 'gteq' and compare != 'lteq':
         print "Invalid version check {}".format(compare)
         return False
@@ -179,9 +181,9 @@ lastSaveDir = None
 def askOpenFile(title='Select a Minecraft level....', schematics=False):
     global lastSchematicsDir, lastSaveDir
 
-    initialDir = lastSaveDir or saveFileDir
+    initialDir = lastSaveDir or minecraftSaveFileDir
     if schematics:
-        initialDir = lastSchematicsDir or schematicsDir
+        initialDir = lastSchematicsDir or directories.schematicsDir
 
     def _askOpen():
         suffixes = ["mclevel", "dat", "mine", "mine.gz"]
@@ -253,7 +255,7 @@ def askOpenFileWin32(title, schematics, initialDir):
 
 def askSaveSchematic(initialDir, displayName, fileFormat):
     return askSaveFile(initialDir,
-                       title='Save this schematic...',
+                       title=_('Save this schematic...'),
                        defaultName=displayName + "." + fileFormat,
                        filetype=_('Minecraft Schematics (*.{0})\0*.{0}\0\0').format(fileFormat),
                        suffix=fileFormat,
@@ -304,7 +306,7 @@ def askSaveFile(initialDir, title, defaultName, filetype, suffix):
         sp.setAllowedFileTypes_([suffix])
 
         if sp.runModal() == 0:
-            return  # pressed cancel
+            return # pressed cancel
 
         filename = sp.filename()
         AppKit.NSApp.mainWindow().makeKeyWindow()
@@ -325,7 +327,7 @@ def askSaveFile(initialDir, title, defaultName, filetype, suffix):
 #
 #           (filename, customfilter, flags) = win32gui.GetSaveFileNameW(
 #               hwndOwner = display.get_wm_info()['window'],
-#               # InitialDir=saveFileDir,
+#               # InitialDir=minecraftSaveFileDir,
 #               Flags=win32con.OFN_EXPLORER | win32con.OFN_NOCHANGEDIR | win32con.OFN_OVERWRITEPROMPT,
 #               File=initialDir + os.sep + displayName,
 #               DefExt=fileFormat,
@@ -358,35 +360,6 @@ def askSaveFile(initialDir, title, defaultName, filetype, suffix):
 #
 #   return filename
 
-
-def documents_folder():
-    docsFolder = None
-
-    if sys.platform == "win32":
-        try:
-            objShell = win32com.client.Dispatch("WScript.Shell")
-            docsFolder = objShell.SpecialFolders("MyDocuments")
-
-        except Exception, e:
-            print e
-            try:
-                docsFolder = shell.SHGetFolderPath(0, shellcon.CSIDL_PERSONAL, 0, 0)
-            except Exception, e:
-                userprofile = os.environ['USERPROFILE'].decode(sys.getfilesystemencoding())
-                docsFolder = os.path.join(userprofile, _("Documents"))
-
-    elif sys.platform == "darwin":
-        docsFolder = os.path.expanduser(u"~/%s/"%_("Documents"))
-    else:
-        docsFolder = os.path.expanduser(u"~/.mcedit")
-    try:
-        os.mkdir(docsFolder)
-    except:
-        pass
-
-    return docsFolder
-
-
 def platform_open(path):
     try:
         if sys.platform == "win32":
@@ -403,110 +376,3 @@ def platform_open(path):
 
 
 win32_window_size = True
-
-ini = u"mcedit.ini"
-parentDir = dirname(directories.dataDir)
-docsFolder = documents_folder()
-
-portableConfigFilePath = os.path.join(parentDir, ini)
-portableSchematicsDir = os.path.join(parentDir, u"MCEdit-schematics")
-portableFiltersDir = os.path.join(parentDir, u"MCEdit-filters")
-fixedConfigFilePath = os.path.join(docsFolder, ini)
-fixedSchematicsDir = os.path.join(docsFolder, u"MCEdit-schematics")
-fixedFiltersDir = os.path.join(docsFolder, u"MCEdit-filters")
-
-if sys.platform == "darwin":
-    # parentDir is MCEdit.app/Contents/
-    folderContainingAppPackage = dirname(dirname(parentDir))
-    oldPath = fixedConfigFilePath
-    fixedConfigFilePath = os.path.expanduser("~/Library/Preferences/mcedit.ini")
-
-    if os.path.exists(oldPath):
-        try:
-            os.rename(oldPath, fixedConfigFilePath)
-        except Exception, e:
-            print repr(e)
-
-    portableConfigFilePath = os.path.join(folderContainingAppPackage, ini)
-    portableSchematicsDir = os.path.join(folderContainingAppPackage, u"MCEdit-schematics")
-    portableFiltersDir = os.path.join(folderContainingAppPackage, u"MCEdit-filters")
-
-
-def goPortable():
-    global configFilePath, schematicsDir, filtersDir, portable
-
-    if os.path.exists(fixedSchematicsDir):
-        move_displace(fixedSchematicsDir, portableSchematicsDir)
-    if os.path.exists(fixedConfigFilePath):
-        move_displace(fixedConfigFilePath, portableConfigFilePath)
-    if os.path.exists(fixedFiltersDir):
-        move_displace(fixedFiltersDir, portableFiltersDir)
-
-    schematicsDir = portableSchematicsDir
-    configFilePath = portableConfigFilePath
-    filtersDir = portableFiltersDir
-    portable = True
-
-
-def move_displace(src, dst):
-    dstFolder = os.path.basename(os.path.dirname(dst))
-    if not os.path.exists(dst):
-
-        print "Moving {0} to {1}".format(os.path.basename(src), dstFolder)
-        shutil.move(src, dst)
-    else:
-        olddst = dst + ".old"
-        i = 0
-        while os.path.exists(olddst):
-            olddst = dst + ".old" + str(i)
-            i += 1
-
-        print "{0} already found in {1}! Renamed it to {2}.".format(os.path.basename(src), dstFolder, dst)
-        os.rename(dst, olddst)
-        shutil.move(src, dst)
-
-
-def goFixed():
-    global configFilePath, schematicsDir, filtersDir, portable
-
-    if os.path.exists(portableSchematicsDir):
-        move_displace(portableSchematicsDir, fixedSchematicsDir)
-    if os.path.exists(portableConfigFilePath):
-        move_displace(portableConfigFilePath, fixedConfigFilePath)
-    if os.path.exists(portableFiltersDir):
-        move_displace(portableFiltersDir, fixedFiltersDir)
-
-    schematicsDir = fixedSchematicsDir
-    configFilePath = fixedConfigFilePath
-    filtersDir = fixedFiltersDir
-    portable = False
-
-
-def portableConfigExists():
-    return (os.path.exists(portableConfigFilePath)  # mcedit.ini in MCEdit folder
-            or (sys.platform != 'darwin' and not os.path.exists(
-        fixedConfigFilePath)))  # no mcedit.ini in Documents folder (except on OS X when we always want it in Library/Preferences
-
-
-if portableConfigExists():
-    print "Running in portable mode. MCEdit-schematics and mcedit.ini are stored alongside " + (
-    sys.platform == "darwin" and "the MCEdit app bundle" or "MCEditData")
-    portable = True
-    schematicsDir = portableSchematicsDir
-    configFilePath = portableConfigFilePath
-    filtersDir = portableFiltersDir
-
-else:
-    print "Running in fixed install mode. MCEdit-schematics and mcedit.ini are in your Documents folder."
-    schematicsDir = fixedSchematicsDir
-    configFilePath = fixedConfigFilePath
-    filtersDir = fixedFiltersDir
-    portable = False
-
-if portable:
-    serverJarStorageDir = (os.path.join(parentDir, "ServerJarStorage"))
-    ServerJarStorage.defaultCacheDir = serverJarStorageDir
-    jarStorage = ServerJarStorage(serverJarStorageDir)
-else:
-    jarStorage = ServerJarStorage()
-

@@ -22,15 +22,30 @@ import collections
 import ConfigParser
 from cStringIO import StringIO
 
-import mcplatform
+import directories
 
 from albow import alert
 
 log = logging.getLogger(__name__)
 
 
+def getNewKey(value, i):
+    if 'left' in value and len(value) > 5:
+        value = value[5:]
+    elif 'right' in value and len(value) > 6:
+        value = value[6:]
+    if value >= 'a' and value <= 'z':
+        value = value.replace(value[0], value[0].upper(), 1)
+    if i >= 26 and "Ctrl-" not in value:
+        value = "Ctrl-" + value
+    if value == "mouse4":
+        value = "Scroll Up"
+    if value == "mouse5":
+        value = "Scroll Down"
+    return value
+
 def configFilePath():
-    return mcplatform.configFilePath
+    return directories.configFilePath
 
 
 def loadConfig():
@@ -83,7 +98,14 @@ def loadConfig():
 
     except Exception, e:
         log.warn(u"Error while reading configuration file mcedit.ini: {0}".format(e))
-
+    else:
+        if config.get("Version", "version") == "1.1.1.1":
+            i = 1
+            for (name, value) in config.items("Keys"):
+                config.set("Keys", name, getNewKey(value, i))
+                i += 1
+            config.set("Version", "version", "1.1.2.0")
+            saveConfig()
     return config
 
 
@@ -105,56 +127,58 @@ def saveConfig():
 
 configDefaults = """
 [Keys]
-forward = w
-back = s
-left = a
-right = d
-up = q
-down = z
-brake = space
+forward = W
+back = S
+left = A
+right = D
+up = Space
+down = Shift
+brake = C
 
-rotate = e
-roll = r
-flip = f
-mirror = g
-swap = x
+rotate = E
+roll = R
+flip = F
+mirror = G
+swap = X
 
-pan left = j
-pan right = l
-pan up = i
-pan down = k
+pan left = J
+pan right = L
+pan up = I
+pan down = K
 
-reset reach = mouse3
-increase reach = mouse4
-decrease reach = mouse5
+reset reach = Mouse3
+increase reach = Scroll Up
+decrease reach = Scroll Down
 
-confirm construction = return
+confirm construction = Return
 
-open level = o
-new level = n
-delete blocks = delete
+open level = O
+new level = N
+delete blocks = Delete
 
 toggle fps counter = 0
-toggle renderer = m
+toggle renderer = M
 
-quit = q
-swap view = f
-select all = a
-deselect = d 
-cut = x
-copy = c
-paste = v
-reload world = r
-open = o
-load = l
-undo = z
-save = s
-new world = n
-close world = w
-world info = i
-goto panel = g
-export selection = e
+quit = Ctrl-Q
+swap view = Ctrl-F
+select all = Ctrl-A
+deselect = Ctrl-D
+cut = Ctrl-X
+copy = Ctrl-C
+paste = Ctrl-V
+reload world = Ctrl-R
+open = Ctrl-O
+quick load = Ctrl-L
+undo = Ctrl-Z
+save = Ctrl-S
+new world = Ctrl-N
+close world = Ctrl-W
+world info = Ctrl-I
+goto panel = Ctrl-G
+export selection = Ctrl-E
 
+[Version]
+version = 1.1.1.1
 """
 
 log.info("Loading config...")

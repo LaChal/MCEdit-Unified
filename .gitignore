@@ -70,3 +70,6 @@ Thumbs.db
 # MCEdit stuff
 filters.json
 pymclevel/.git/
+*.lnk
+Filters/
+Schematics/

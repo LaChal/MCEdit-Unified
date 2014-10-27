@@ -12,6 +12,7 @@ import OpenGL
 import sys
 import os
 import directories
+import keys
 
 if "-debug" not in sys.argv:
     OpenGL.ERROR_CHECKING = False
@@ -66,13 +67,11 @@ logger.addHandler(fh)
 logger.addHandler(ch)
 
 import albow
-# TODO: Language Detection
-# import locale
-# albow.translate.setLang(locale.getdefaultlocale()[0])
-# del locale
-
-albow.translate.buildTranslation(albow.translate.refreshLang())
-
+#-#
+albow.translate.setLangPath("./lang")
+#import locale
+#albow.translate.setLang(locale.getdefaultlocale()[0])
+#del locale
 from albow.translate import _
 #-#
 from albow.dialogs import Dialog
@@ -85,6 +84,9 @@ from glbackground import Panel
 import glutils
 import leveleditor
 from leveleditor import ControlSettings, Settings
+#-#
+albow.translate.setLang(Settings.langCode.get())
+#-#
 import mceutils
 import mcplatform
 from mcplatform import platform_open
@@ -167,9 +169,9 @@ class FileOpener(albow.Widget):
                 shortname = shortname[:37] + "..."
             shortnames.append(shortname)
 
-        hotkeys = ([(str.upper(config.config.get('Keys', 'New World')), 'Create New World', self.createNewWorld),
-                    (str.upper(config.config.get('Keys', 'Load')), 'Quick Load', self.mcedit.editor.askLoadWorld),
-                    (str.upper(config.config.get('Keys', 'Open')), 'Open...', self.promptOpenAndLoad)] + [
+        hotkeys = ([(config.config.get('Keys', 'New World'), 'Create New World', self.createNewWorld),
+                    (config.config.get('Keys', 'Quick Load'), 'Quick Load', self.mcedit.editor.askLoadWorld),
+                    (config.config.get('Keys', 'Open'), 'Open...', self.promptOpenAndLoad)] + [
                        ('F{0}'.format(i + 1), shortnames[i], self.createLoadButtonHandler(world))
                        for i, world in enumerate(self.mcedit.recentWorlds())])
 
@@ -194,18 +196,18 @@ class FileOpener(albow.Widget):
         #self.invalidate()
 
     def key_down(self, evt):
-        keyname = key.name(evt.key)
-        if keyname == 'f4' and (key.get_mods() & (pygame.KMOD_ALT | pygame.KMOD_LALT | pygame.KMOD_RALT)):
+        keyname = keys.getKey(evt)
+        if keyname == 'Alt-F4':
             raise SystemExit
-        if keyname in ('f1', 'f2', 'f3', 'f4', 'f5'):
+        if keyname in ('F1', 'F2', 'F3', 'F4', 'F5'):
             self.mcedit.loadRecentWorldNumber(int(keyname[1]))
-        if keyname is config.config.get('Keys', 'Load'):
+        if keyname == config.config.get('Keys', 'Quick Load'):
             self.mcedit.editor.askLoadWorld()
-        if keyname is config.config.get('Keys', 'New World'):
+        if keyname == config.config.get('Keys', 'New World'):
             self.createNewWorld()
-        if keyname is config.config.get('Keys', 'Open'):
+        if keyname == config.config.get('Keys', 'Open'):
             self.promptOpenAndLoad()
-        if keyname is config.config.get('Keys', 'Quit'):
+        if keyname == config.config.get('Keys', 'Quit'):
             self.mcedit.confirm_quit()
 
     def promptOpenAndLoad(self):
@@ -221,211 +223,6 @@ class FileOpener(albow.Widget):
 
     def createLoadButtonHandler(self, filename):
         return lambda: self.mcedit.loadFile(filename)
-
-
-class KeyConfigPanel(Dialog):
-    keyConfigKeys = [
-        "<Movement Controls>",
-        "Forward",
-        "Back",
-        "Left",
-        "Right",
-        "Up",
-        "Down",
-        "Brake",
-        "",
-        "<Camera Controls>",
-        "Pan Left",
-        "Pan Right",
-        "Pan Up",
-        "Pan Down",
-        "",
-        "<Tool Controls>",
-        "Rotate",
-        "Roll",
-        "Flip",
-        "Mirror",
-        "Swap",
-        "Increase Reach",
-        "Decrease Reach",
-        "Reset Reach",
-        "",
-        "<Function Controls [Ctrl+]>",
-        "Quit",
-        "Swap View",
-        "Select All",
-        "Deselect",
-        "Cut",
-        "Copy",
-        "Paste",
-        "Reload World",
-        "Open",
-        "Load",
-        "Undo",
-        "Save",
-        "New World",
-        "Close World",
-        "World Info",
-        "Goto Panel",
-        "Export Selection"
-    ]
-
-    presets = {"WASD": [
-        ("Forward", "w"),
-        ("Back", "s"),
-        ("Left", "a"),
-        ("Right", "d"),
-        ("Up", "q"),
-        ("Down", "z"),
-        ("Brake", "space"),
-
-        ("Rotate", "e"),
-        ("Roll", "r"),
-        ("Flip", "f"),
-        ("Mirror", "g"),
-        ("Swap", "x"),
-        ("Increase Reach", "mouse4"),
-        ("Decrease Reach", "mouse5"),
-        ("Reset Reach", "mouse3"),
-    ],
-               "Arrows": [
-                   ("Forward", "up"),
-                   ("Back", "down"),
-                   ("Left", "left"),
-                   ("Right", "right"),
-                   ("Up", "page up"),
-                   ("Down", "page down"),
-                   ("Brake", "space"),
-
-                   ("Rotate", "home"),
-                   ("Roll", "end"),
-                   ("Flip", "insert"),
-                   ("Mirror", "delete"),
-                   ("Swap", "\\"),
-                   ("Increase Reach", "mouse4"),
-                   ("Decrease Reach", "mouse5"),
-                   ("Reset Reach", "mouse3"),
-               ],
-               "Numpad": [
-                   ("Forward", "[8]"),
-                   ("Back", "[5]"),
-                   ("Left", "[4]"),
-                   ("Right", "[6]"),
-                   ("Up", "[9]"),
-                   ("Down", "[3]"),
-                   ("Brake", "[0]"),
-
-                   ("Rotate", "[-]"),
-                   ("Roll", "[+]"),
-                   ("Flip", "[/]"),
-                   ("Mirror", "[*]"),
-                   ("Swap", "[.]"),
-                   ("Increase Reach", "mouse4"),
-                   ("Decrease Reach", "mouse5"),
-                   ("Reset Reach", "mouse3"),
-               ]}
-
-    selectedKeyIndex = 0
-
-    def __init__(self):
-        Dialog.__init__(self)
-        keyConfigTable = albow.TableView(
-            columns=[albow.TableColumn("Command", 200, "l"), albow.TableColumn("Assigned Key", 150, "r")])
-        keyConfigTable.num_rows = lambda: len(self.keyConfigKeys)
-        keyConfigTable.row_data = self.getRowData
-        keyConfigTable.row_is_selected = lambda x: x == self.selectedKeyIndex
-        keyConfigTable.click_row = self.selectTableRow
-        tableWidget = albow.Widget()
-        tableWidget.add(keyConfigTable)
-        tableWidget.shrink_wrap()
-
-        self.keyConfigTable = keyConfigTable
-
-        buttonRow = (albow.Button("Assign Key...", action=self.askAssignSelectedKey),
-                     albow.Button("Done", action=self.dismiss))
-
-        buttonRow = albow.Row(buttonRow)
-
-        choiceButton = mceutils.ChoiceButton(["WASD", "Arrows", "Numpad"], choose=self.choosePreset)
-        if config.config.get("Keys", "Forward") == "up":
-            choiceButton.selectedChoice = "Arrows"
-        if config.config.get("Keys", "Forward") == "[8]":
-            choiceButton.selectedChoice = "Numpad"
-
-        choiceRow = albow.Row((albow.Label("Presets: "), choiceButton))
-        self.choiceButton = choiceButton
-
-        col = albow.Column((tableWidget, choiceRow, buttonRow))
-        self.add(col)
-        self.shrink_wrap()
-
-    def choosePreset(self):
-        preset = self.choiceButton.selectedChoice
-        keypairs = self.presets[preset]
-        for configKey, key in keypairs:
-            config.config.set("Keys", configKey, key)
-
-    def getRowData(self, i):
-        configKey = self.keyConfigKeys[i]
-        if self.isConfigKey(configKey):
-            key = config.config.get("Keys", configKey)
-        else:
-            key = ""
-        return configKey, key
-
-    def isConfigKey(self, configKey):
-        return not (len(configKey) == 0 or configKey[0] == "<")
-
-    def selectTableRow(self, i, evt):
-        self.selectedKeyIndex = i
-        if evt.num_clicks == 2:
-            self.askAssignSelectedKey()
-
-    def askAssignSelectedKey(self):
-        self.askAssignKey(self.keyConfigKeys[self.selectedKeyIndex])
-
-    def askAssignKey(self, configKey, labelString=None):
-        if not self.isConfigKey(configKey):
-            return
-
-        panel = Panel()
-        panel.bg_color = (0.5, 0.5, 0.6, 1.0)
-
-        if labelString is None:
-            labelString = _("Press a key to assign to the action \"{0}\"\n\nPress ESC to cancel.").format(configKey)
-        label = albow.Label(labelString)
-        panel.add(label)
-        panel.shrink_wrap()
-
-        def panelKeyUp(evt):
-            keyname = key.name(evt.key)
-            panel.dismiss(keyname)
-
-        def panelMouseUp(evt):
-            button = leveleditor.remapMouseButton(evt.button)
-            if button > 2:
-                keyname = "mouse{0}".format(button)
-                panel.dismiss(keyname)
-
-        panel.key_up = panelKeyUp
-        panel.mouse_up = panelMouseUp
-
-        keyname = panel.present()
-        if keyname != "escape":
-            occupiedKeys = [(v, k) for (k, v) in config.config.items("Keys") if v == keyname]
-            oldkey = config.config.get("Keys", configKey)
-            config.config.set("Keys", configKey, keyname)
-            '''for keyname, setting in occupiedKeys:
-                if self.askAssignKey(setting,
-                                     _("The key {0} is no longer bound to {1}.\n"
-                                     "Press a new key for the action \"{1}\"\n\n"
-                                     "Press ESC to cancel.")
-                                     .format(keyname, setting)):
-                    config.config.set("Keys", configKey, oldkey)
-                    return True'''  #Only disabled as currently you can't input modifiers, reenable if fixed and edit leveleditor.py as needed
-        else:
-            return True
-
 
 class graphicsPanel(Dialog):
     anchor = 'wh'
@@ -486,7 +283,8 @@ class OptionsPanel(Dialog):
     anchor = 'wh'
 
     def __init__(self, mcedit):
-        albow.translate.refreshLang(True)
+#        albow.translate.refreshLang(suppressAlert=True)
+        albow.translate.setLang(Settings.langCode.get())
 
         Dialog.__init__(self)
 
@@ -535,6 +333,10 @@ class OptionsPanel(Dialog):
         setWindowPlacementRow = mceutils.CheckBoxLabel("Set Window Placement",
                                                        ref=Settings.setWindowPlacement.propertyRef(),
                                                        tooltipText="Try to save and restore the window position.")
+                                                       
+        rotateBlockBrushRow = mceutils.CheckBoxLabel("Rotate block with brush",
+                                                        ref=Settings.rotateBlockBrush.propertyRef(),
+                                                        tooltipText="When rotating your brush, also rotate the orientation of the block your brushing with")
 
         windowSizeRow = mceutils.CheckBoxLabel("Window Resize Alert",
                                                ref=Settings.shouldResizeAlert.propertyRef(),
@@ -554,13 +356,18 @@ class OptionsPanel(Dialog):
 
         langStringRow = mceutils.TextInputRow("Language String",
                                             ref=Settings.langCode.propertyRef(),
-                                            tooltipText="Enter your language string (corresponding to the file in /lang). Default is en_US")
+                                            tooltipText="Enter your language string (corresponding to the file in /lang). Available:\nen_US (default)\nfr_FR")
+        
         staticCommandsNudgeRow = mceutils.CheckBoxLabel("Static Coords While Nudging",
                                             ref=Settings.staticCommandsNudge.propertyRef(),
                                             tooltipText="Change static coordinates in command blocks while nudging.")                                      
 
+        moveSpawnerPosNudgeRow = mceutils.CheckBoxLabel("Change Spawners While Nudging",
+                                            ref=Settings.moveSpawnerPosNudge.propertyRef(),
+                                            tooltipText="Change the position of the mobs in spawners while nudging.")
+        
         self.goPortableButton = goPortableButton = albow.Button("Change", action=self.togglePortable)
-
+        
         goPortableButton.tooltipText = self.portableButtonTooltip()
         goPortableRow = albow.Row(
             (albow.ValueDisplay(ref=albow.AttrRef(self, 'portableLabelText'), width=250, align='r'), goPortableButton))
@@ -582,24 +389,23 @@ class OptionsPanel(Dialog):
         )
 
         options = (
-                      longDistanceRow,
-                      flyModeRow,
-                      autoBrakeRow,
-                      swapAxesRow,
-                      invertRow,
-                      visibilityCheckRow,
-                      staticCommandsNudgeRow,
-                      langStringRow,
-                  ) + (
-                      ((sys.platform == "win32" and pygame.version.vernum == (1, 9, 1)) and (windowSizeRow,) or ())
-# Disabled Crash Reporting Option
-#                 ) + (
-#                     reportRow,
-                  ) + (
-                      (sys.platform == "win32") and (setWindowPlacementRow,) or ()
-                  ) + (
-                      goPortableRow,
-                  )
+                    longDistanceRow,
+                    flyModeRow,
+                    autoBrakeRow,
+                    swapAxesRow,
+                    invertRow,
+                    visibilityCheckRow,
+                    staticCommandsNudgeRow,
+                    moveSpawnerPosNudgeRow,
+                    rotateBlockBrushRow,
+                    langStringRow,
+                    ) + (
+                        ((sys.platform == "win32" and pygame.version.vernum == (1, 9, 1)) and (windowSizeRow,) or ())
+                    ) + (
+                        (sys.platform == "win32") and (setWindowPlacementRow,) or ()
+                    ) + (
+                        (not sys.platform == "darwin") and (goPortableRow,) or ()
+                    )
 
         rightcol = albow.Column(options, align='r')
         leftcol = albow.Column(inputs, align='r')
@@ -626,13 +432,15 @@ class OptionsPanel(Dialog):
         return (
         _("Click to make your MCEdit install self-contained by moving the settings and schematics into the program folder"),
         _("Click to make your MCEdit install persistent by moving the settings and schematics into your Documents folder"))[
-            mcplatform.portable]
+            directories.portable]
 
     @property
     def portableLabelText(self):
-        return (_("Install Mode: Portable"), _("Install Mode: Fixed"))[1 - mcplatform.portable]
+        return (_("Install Mode: Portable"), _("Install Mode: Fixed"))[1 - directories.portable]
 
     def togglePortable(self):
+        if sys.platform == "darwin":
+            return False
         textChoices = [
             _("This will make your MCEdit \"portable\" by moving your settings and schematics into the same folder as {0}. Continue?").format(
                 (sys.platform == "darwin" and _("the MCEdit application") or _("MCEditData"))),
@@ -642,20 +450,25 @@ class OptionsPanel(Dialog):
             textChoices[
                 1] = _("This will move your schematics to your Documents folder and your settings to your Preferences folder. Continue?")
 
-        alertText = textChoices[mcplatform.portable]
+        alertText = textChoices[directories.portable]
         if albow.ask(alertText) == "OK":
             try:
-                [mcplatform.goPortable, mcplatform.goFixed][mcplatform.portable]()
+                [directories.goPortable, directories.goFixed][directories.portable]()
             except Exception, e:
                 traceback.print_exc()
                 albow.alert(_(u"Error while moving files: {0}").format(repr(e)))
 
         self.goPortableButton.tooltipText = self.portableButtonTooltip()
+        return True
 
     def dismiss(self, *args, **kwargs):
         """Used to change the language."""
+        o, n, sc = albow.translate.setLang(Settings.langCode.get())
+        if sc == {}:
+            albow.alert(_("{} is not a valid language").format(n))
+        elif o != n:
+            albow.alert("You must restart MCEdit to see language changes")
         Dialog.dismiss(self, *args, **kwargs)
-        albow.translate.refreshLang(build=False)
 
 class MCEdit(GLViewport):
     #debug_resize = True
@@ -675,7 +488,7 @@ class MCEdit(GLViewport):
         self.optionsPanel = OptionsPanel(self)
         self.graphicsPanel = graphicsPanel(self)
 
-        self.keyConfigPanel = KeyConfigPanel()
+        self.keyConfigPanel = keys.KeyConfigPanel()
 
         self.droppedLevel = None
         self.reloadEditor()
@@ -686,8 +499,8 @@ class MCEdit(GLViewport):
         if len(sys.argv) > 1:
             for arg in sys.argv[1:]:
                 f = arg.decode(sys.getfilesystemencoding())
-                if os.path.isdir(os.path.join(pymclevel.saveFileDir, f)):
-                    f = os.path.join(pymclevel.saveFileDir, f)
+                if os.path.isdir(os.path.join(pymclevel.minecraftSaveFileDir, f)):
+                    f = os.path.join(pymclevel.minecraftSaveFileDir, f)
                     self.droppedLevel = f
                     break
                 if os.path.exists(f):
@@ -778,9 +591,11 @@ class MCEdit(GLViewport):
 
     def makeSideColumn(self):
         def showLicense():
-            platform_open(os.path.join(directories.dataDir, "LICENSE.txt"))
+            platform_open(os.path.join(directories.getDataDir(), "LICENSE.txt"))
+        def showCacheDir():
+            platform_open(directories.getCacheDir())
 
-        readmePath = os.path.join(directories.dataDir, "README.html")
+        readmePath = os.path.join(directories.getDataDir(), "README.html")
 
         hotkeys = ([("",
                      "Keys",
@@ -803,6 +618,9 @@ class MCEdit(GLViewport):
                     ("",
                      "License",
                      showLicense),
+                    ("",
+                     "Open Magic Folder",
+                     showCacheDir),
                    ])
 
         c = mceutils.HotkeyColumn(hotkeys)
@@ -935,7 +753,7 @@ class MCEdit(GLViewport):
                 platform_open(new_version["html_url"])
             elif answer == "Download":
                 platform_open(new_version["asset"]["browser_download_url"])
-                albow.alert(_(' {} should now be downloading via your browser. You will still need to extract the downloaded file to use the updated version.').format(new_version["asset"]["name"]))
+                albow.alert(tr(' {} should now be downloading via your browser. You will still need to extract the downloaded file to use the updated version.').format(new_version["asset"]["name"]))
 
 # Disabled old update code
 #       if hasattr(sys, 'frozen'):
@@ -1052,33 +870,35 @@ def main(argv):
     Setup display, bundled schematics. Handle unclean
     shutdowns.
     """
-    try:
-        import squash_python
-
-        squash_python.uploader.SquashUploader.headers.pop("Content-encoding", None)
-        squash_python.uploader.SquashUploader.headers.pop("Accept-encoding", None)
-
-        version = release.get_version()
-        client = squash_python.get_client()
-        client.APIKey = "6ea52b17-ac76-4fd8-8db4-2d7303473ca2"
-        client.environment = "testing" if "build" in version else "production"
-        client.host = "http://bugs.mcedit.net"
-        client.notifyPath = "/bugs.php"
-        client.revision = release.get_commit()
-        client.build = version
-        client.timeout = 5
+   
+#    try:
+#        import squash_python
+#
+#        squash_python.uploader.SquashUploader.headers.pop("Content-encoding", None)
+#        squash_python.uploader.SquashUploader.headers.pop("Accept-encoding", None)
+#
+#        version = release.get_version()
+#        client = squash_python.get_client()
+#        client.APIKey = "6ea52b17-ac76-4fd8-8db4-2d7303473ca2"
+#        client.environment = "testing" if "build" in version else "production"
+#        client.host = "http://bugs.mcedit.net"
+#        client.notifyPath = "/bugs.php"
+#        client.revision = release.get_commit()
+#        client.build = version
+#        client.timeout = 5
+#        
 # Disabled Crash Reporting Option
 #       client.disabled = not config.config.getboolean("Settings", "report crashes new")
-        client.disabled = True
-
-        def _reportingChanged(val):
-            client.disabled = not val
-
-        Settings.reportCrashes.addObserver(client, '_enabled', _reportingChanged)
-        client.reportErrors()
-        client.hook()
-    except (ImportError, UnicodeError) as e:
-        pass
+#       client.disabled = True
+#
+#       def _reportingChanged(val):
+#           client.disabled = not val
+#
+#       Settings.reportCrashes.addObserver(client, '_enabled', _reportingChanged)
+#       client.reportErrors()
+#       client.hook()
+#   except (ImportError, UnicodeError) as e:
+#       pass
 
     try:
         display.init()
@@ -1093,39 +913,39 @@ def main(argv):
     pygame.font.init()
 
     try:
-        if not os.path.exists(mcplatform.schematicsDir):
+        if not os.path.exists(directories.schematicsDir):
             shutil.copytree(
-                os.path.join(directories.dataDir, u'stock-schematics'),
-                mcplatform.schematicsDir
+                os.path.join(directories.getDataDir(), u'stock-schematics'),
+                directories.schematicsDir
             )
     except Exception, e:
         logging.warning('Error copying bundled schematics: {0!r}'.format(e))
         try:
-            os.mkdir(mcplatform.schematicsDir)
+            os.mkdir(directories.schematicsDir)
         except Exception, e:
             logging.warning('Error creating schematics folder: {0!r}'.format(e))
 
     try:
-        if not os.path.exists(mcplatform.filtersDir):
+        if not os.path.exists(directories.filtersDir):
             shutil.copytree(
-                os.path.join(directories.dataDir, u'filters'),
-                mcplatform.filtersDir
+                os.path.join(directories.getDataDir(), u'stock-filters'),
+                directories.filtersDir
             )
         else:
             # Start hashing the filter dir
-            mceutils.compareMD5Hashes(directories.getAllFilters(mcplatform.filtersDir))
+            mceutils.compareMD5Hashes(directories.getAllFilters(directories.filtersDir))
     except Exception, e:
         logging.warning('Error copying bundled filters: {0!r}'.format(e))
         try:
-            os.mkdir(mcplatform.filtersDir)
+            os.mkdir(directories.filtersDir)
         except Exception, e:
             logging.warning('Error creating filters folder: {0!r}'.format(e))
 
-    if mcplatform.filtersDir not in [s.decode(sys.getfilesystemencoding())
+    if directories.filtersDir not in [s.decode(sys.getfilesystemencoding())
                           if isinstance(s, str)
                           else s
                           for s in sys.path]:
-        sys.path.append(mcplatform.filtersDir.encode(sys.getfilesystemencoding()))
+        sys.path.append(directories.filtersDir.encode(sys.getfilesystemencoding()))
 
     try:
         MCEdit.main()
@@ -1192,7 +1012,7 @@ class GLDisplayContext(object):
             config.saveConfig()
 
         try:
-            iconpath = os.path.join(directories.dataDir, 'favicon.png')
+            iconpath = os.path.join(directories.getDataDir(), 'favicon.png')
             iconfile = file(iconpath, 'rb')
             icon = pygame.image.load(iconfile, 'favicon.png')
             display.set_icon(icon)

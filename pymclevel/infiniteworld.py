@@ -32,6 +32,7 @@ from numpy import array, clip, maximum, zeros
 from regionfile import MCRegionFile
 import version_utils
 import scoreboard
+import player
 
 log = getLogger(__name__)
 
@@ -1085,28 +1086,20 @@ class MCInfdevOldLevel(ChunkedLevelMixin, EntityLevel):
 
         assert self.version == self.VERSION_ANVIL, "Pre-Anvil world formats are not supported (for now)"
 
-        if os.path.exists(self.worldFolder.getFolderPath("players")) and os.listdir(
-                self.worldFolder.getFolderPath("players")) != []:
-            self.playersFolder = self.worldFolder.getFolderPath("players")
-            self.oldPlayerFolderFormat = True
-        if os.path.exists(self.worldFolder.getFolderPath("playerdata")):
-            self.playersFolder = self.worldFolder.getFolderPath("playerdata")
-            self.oldPlayerFolderFormat = False
-        self.players = [x[:-4] for x in os.listdir(self.playersFolder) if x.endswith(".dat")]
-        if "Player" in self.root_tag["Data"]:
-            self.players.append("Player")
-
-        
-        if os.path.exists(self.worldFolder.getFolderPath("data")):
-            if os.path.exists(self.worldFolder.getFolderPath("data")+"/scoreboard.dat"):
-                self._scoreboard = scoreboard.Scoreboard(self, False)
-            else:
-                self._scoreboard = scoreboard.Scoreboard(self, True)
-        else:
-            self._scoreboard = scoreboard.Scoreboard(self, True)
+        if readonly == False:
+            if os.path.exists(self.worldFolder.getFolderPath("players")) and os.listdir(
+                    self.worldFolder.getFolderPath("players")) != []:
+                self.playersFolder = self.worldFolder.getFolderPath("players")
+                self.oldPlayerFolderFormat = True
+            if os.path.exists(self.worldFolder.getFolderPath("playerdata")):
+                self.playersFolder = self.worldFolder.getFolderPath("playerdata")
+                self.oldPlayerFolderFormat = False
+            self.players = [x[:-4] for x in os.listdir(self.playersFolder) if x.endswith(".dat")]
+            if "Player" in self.root_tag["Data"]:
+                self.players.append("Player")
         
 
-        self.preloadDimensions()
+            self.preloadDimensions()
 
     # --- Load, save, create ---
 
@@ -1156,8 +1149,8 @@ class MCInfdevOldLevel(ChunkedLevelMixin, EntityLevel):
             lock = -1
         if lock != self.initTime:
             # I should raise an error, but this seems to always fire the exception, so I will just try to aquire it instead
-            # raise SessionLockLost, "Session lock lost. This world is being accessed from another location."
-            self.acquireSessionLock()
+            raise SessionLockLost, "Session lock lost. This world is being accessed from another location."
+            #self.acquireSessionLock()
 
     def loadLevelDat(self, create=False, random_seed=None, last_played=None):
 
@@ -1289,9 +1282,17 @@ class MCInfdevOldLevel(ChunkedLevelMixin, EntityLevel):
 
         return shortname
 
-    @property
-    def scoreboard(self):
-        return self._scoreboard
+    def init_scoreboard(self):
+        if os.path.exists(self.worldFolder.getFolderPath("data")):
+                if os.path.exists(self.worldFolder.getFolderPath("data")+"/scoreboard.dat"):
+                    return scoreboard.Scoreboard(self, False)
+        return scoreboard.Scoreboard(self, True)
+    
+    def init_player_data(self):
+        player_data = []
+        for p in [x for x in os.listdir(self.playersFolder) if x.endswith(".dat")]:
+                player_data.append(player.Player(self.playersFolder+"\\"+p))
+        return player_data
 
     #@scoreboard.setter
     #def scoreboard(self, scoreboard):

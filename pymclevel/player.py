@@ -24,11 +24,11 @@ class Player:
         self._healf = self.root_tag["HealF"].value
 
         self._xp_level = self.root_tag["XpLevel"].value
+        self._inventory = self.root_tag["Inventory"].value
         
-
     @property
     def name(self):
-        return self._uuid
+        return self._name
     
     @property
     def gametype(self):
@@ -57,3 +57,10 @@ class Player:
     @property
     def XP_Level(self):
         return self._xp_level
+    
+    @property
+    def inventory(self):
+        return self._inventory
+    
+    def save(self):
+        raise NotImplementedError("Player Data cannot be saved right now")

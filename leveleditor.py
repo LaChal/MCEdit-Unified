@@ -16,6 +16,7 @@ import sys
 from compass import CompassOverlay
 from editortools.thumbview import ThumbView
 from pymclevel.infiniteworld import SessionLockLost
+import keys
 
 """
 leveleditor.py
@@ -48,6 +49,7 @@ import itertools
 import mcplatform
 import pymclevel
 import renderer
+import directories
 
 from math import isnan
 from os.path import dirname, isdir
@@ -77,6 +79,7 @@ from mcplatform import askSaveFile
 from pymclevel.minecraft_server import alphanum_key  # ?????
 from renderer import MCRenderer
 from pymclevel import version_utils
+from pymclevel.entity import Entity
 
 # Label = GLLabel
 
@@ -93,6 +96,9 @@ Settings.blockBuffer = Settings("Block Buffer", 256 * 1048576)
 Settings.reportCrashes = Settings("report crashes new", False)
 Settings.reportCrashesAsked = Settings("report crashes asked", False)
 Settings.staticCommandsNudge = Settings("Static Coords While Nudging", False)
+Settings.moveSpawnerPosNudge = Settings("Change Spawners While Nudging", False)
+Settings.rotateBlockBrush = Settings("rotateBlockBrushRow", True)
+
 
 Settings.langCode = Settings("Language String", "en_US")
 
@@ -157,14 +163,6 @@ ControlSettings.swapAxes = ControlSettings("swap axes looking down", False)
 
 arch = platform.architecture()[0]
 
-
-def remapMouseButton(button):
-    buttons = [0, 1, 3, 2, 4, 5]  # mouse2 is right button, mouse3 is middle
-    if button < len(buttons):
-        return buttons[button]
-    return button
-
-
 class ControlPanel(Panel):
     @classmethod
     def getHeader(cls):
@@ -182,19 +180,19 @@ class ControlPanel(Panel):
         buttonsColumn = [header]
 
         cmd = mcplatform.cmd_name
-        hotkeys = ([(cmd + "-" + str.upper(config.config.get('Keys', 'New World')), "Create New World",
+        hotkeys = ([(str.upper(config.config.get('Keys', 'New World')), "Create New World",
                      editor.mcedit.createNewWorld),
-                    (cmd + "-" + str.upper(config.config.get('Keys', 'Load')), "Quick Load", editor.askLoadWorld),
-                    (cmd + "-" + str.upper(config.config.get('Keys', 'Open')), "Open...", editor.askOpenFile),
-                    (cmd + "-" + str.upper(config.config.get('Keys', 'Save')), "Save", editor.saveFile),
-                    (cmd + "-" + str.upper(config.config.get('Keys', 'Reload World')), "Reload", editor.reload),
-                    (cmd + "-" + str.upper(config.config.get('Keys', 'Close World')), "Close", editor.closeEditor),
-                    (cmd + "-" + str.upper(config.config.get('Keys', 'Goto Panel')), "Goto", editor.showGotoPanel),
-                    (cmd + "-" + str.upper(config.config.get('Keys', 'World Info')), "World Info", editor.showWorldInfo),
-                    (cmd + "-" + str.upper(config.config.get('Keys', 'Undo')), "Undo", editor.undo),
-                    (cmd + "-" + str.upper(config.config.get('Keys', 'Select All')), "Select All", editor.selectAll),
-                    (cmd + "-" + str.upper(config.config.get('Keys', 'Deselect')), "Deselect", editor.deselect),
-                    (cmd + "-" + str.upper(config.config.get('Keys', 'Swap View')),
+                    (str.upper(config.config.get('Keys', 'Quick Load')), "Quick Load", editor.askLoadWorld),
+                    (str.upper(config.config.get('Keys', 'Open')), "Open...", editor.askOpenFile),
+                    (str.upper(config.config.get('Keys', 'Save')), "Save", editor.saveFile),
+                    (str.upper(config.config.get('Keys', 'Reload World')), "Reload", editor.reload),
+                    (str.upper(config.config.get('Keys', 'Close World')), "Close", editor.closeEditor),
+                    (str.upper(config.config.get('Keys', 'Goto Panel')), "Goto", editor.showGotoPanel),
+                    (str.upper(config.config.get('Keys', 'World Info')), "World Info", editor.showWorldInfo),
+                    (str.upper(config.config.get('Keys', 'Undo')), "Undo", editor.undo),
+                    (str.upper(config.config.get('Keys', 'Select All')), "Select All", editor.selectAll),
+                    (str.upper(config.config.get('Keys', 'Deselect')), "Deselect", editor.deselect),
+                    (str.upper(config.config.get('Keys', 'Swap View')),
                      AttrRef(editor, 'viewDistanceLabelText'), editor.swapViewDistance),
                     ("Alt-F4", "Quit", editor.quit),
                    ])
@@ -529,7 +527,7 @@ class CameraViewport(GLViewport):
             intProjectedPoint = map(int, map(numpy.floor, projectedPoint))
         except ValueError:
             return None  # catch NaNs
-        intProjectedPoint[1] = max(0, intProjectedPoint[1])
+        intProjectedPoint[1] = max(-1, intProjectedPoint[1])
 
         # find out which face is under the cursor.  xxx do it more precisely
         faceVector = ((projectedPoint[0] - (intProjectedPoint[0] + 0.5)),
@@ -792,22 +790,27 @@ class CameraViewport(GLViewport):
         panel = Dialog()
         skullMenu = mceutils.ChoiceButton(map(str, skullTypes))
 
-        if "ExtraType" not in tileEntity:
-            usernameField.value = ""
-        else:
+        if "Owner" in tileEntity:
+            usernameField.value = str(tileEntity["Owner"]["Name"].value)
+        elif "ExtraType" in tileEntity:
             usernameField.value = str(tileEntity["ExtraType"].value)
+        else:
+            usernameField.value = ""
 
+        oldUserName = usernameField.value
         skullMenu.selectedChoice = inverseSkullType[tileEntity["SkullType"].value]
 
         def updateSkull():
-            if usernameField.value != "":
-                tileEntity["ExtraType"] = pymclevel.TAG_String(usernameField.value)
-                tileEntity["SkullType"] = pymclevel.TAG_Byte(skullTypes[skullMenu.selectedChoice])
-                if "Owner" in tileEntity:
-                    del tileEntity["Owner"]
+            if usernameField.value != oldUserName:
+                if usernameField.value != "":
+                    tileEntity["ExtraType"] = pymclevel.TAG_String(usernameField.value)
+                    tileEntity["SkullType"] = pymclevel.TAG_Byte(skullTypes[skullMenu.selectedChoice])
+                    if "Owner" in tileEntity:
+                        del tileEntity["Owner"]
+                    self.editor.addUnsavedEdit()
+                    
             chunk = self.editor.level.getChunk(int(int(point[0])/16), int(int(point[2])/16))
             chunk.dirty = True
-            self.editor.addUnsavedEdit()
             panel.dismiss()
             
         okBTN = Button("OK", action=updateSkull)
@@ -842,19 +845,23 @@ class CameraViewport(GLViewport):
 
         if tileEntity["Command"].value != "":
             commandField.value = tileEntity["Command"].value
+            oldCommand = commandField.value
         if "TrackOutput" in tileEntity:
             trackOutput.value = tileEntity["TrackOutput"].value
+            oldTrackOutput = trackOutput.value
         if "CustomName" in tileEntity:
             nameField.value = tileEntity["CustomName"].value
+            oldNameField = nameField.value
 
         def updateCommandBlock():
-            print trackOutput.value
-            tileEntity["Command"] = pymclevel.TAG_String(commandField.value)
-            tileEntity["TrackOutput"] = pymclevel.TAG_Byte(trackOutput.value)
-            tileEntity["CustomName"] = pymclevel.TAG_String(nameField.value)
+            if oldCommand != commandField.value or oldTrackOutput != trackOutput.value or oldNameField != nameField.value:
+                tileEntity["Command"] = pymclevel.TAG_String(commandField.value)
+                tileEntity["TrackOutput"] = pymclevel.TAG_Byte(trackOutput.value)
+                tileEntity["CustomName"] = pymclevel.TAG_String(nameField.value)
+                self.editor.addUnsavedEdit()
+                
             chunk = self.editor.level.getChunk(int(int(point[0])/16), int(int(point[2])/16))
             chunk.dirty = True
-            self.editor.addUnsavedEdit()
             panel.dismiss()
 
         okBTN = Button("OK", action=updateCommandBlock)
@@ -1139,7 +1146,7 @@ class CameraViewport(GLViewport):
     # --- Event handlers ---
 
     def mouse_down(self, evt):
-        button = remapMouseButton(evt.button)
+        button = keys.remapMouseButton(evt.button)
         logging.debug("Mouse down %d @ %s", button, evt.pos)
 
         if button == 1:
@@ -1157,7 +1164,7 @@ class CameraViewport(GLViewport):
         # self.focus_switch = None
 
     def mouse_up(self, evt):
-        button = remapMouseButton(evt.button)
+        button = keys.remapMouseButton(evt.button)
         logging.debug("Mouse up   %d @ %s", button, evt.pos)
         if button == 1:
             if sys.platform == "darwin" and evt.ctrl:
@@ -1844,12 +1851,13 @@ class LevelEditor(GLViewport):
                 types[:b.shape[0]] += b
 
                 for ent in chunk.getEntitiesInBox(box):
+                    entID = Entity.getId(ent["id"].value)
                     if ent["id"].value == "Item":
                         v = pymclevel.items.items.findItem(ent["Item"]["id"].value,
                                                            ent["Item"]["Damage"].value).name
                     else:
                         v = ent["id"].value
-                    entityCounts[(ent["id"].value, v)] += 1
+                    entityCounts[(entID, v)] += 1
                 for ent in chunk.getTileEntitiesInBox(box):
                     tileEntityCounts[ent["id"].value] += 1
 
@@ -1878,25 +1886,25 @@ class LevelEditor(GLViewport):
         counts.remove((level.materials.Air, 0))
         counts.append((b, c))
 
-        blockRows = [("({0}:{1})".format(block.ID, block.blockData), block.name, count) for block, count in counts]
-        #blockRows.sort(key=lambda x: alphanum_key(x[2]), reverse=True)
-
+        blockRows = [("", "", ""), (box.volume, "<Blocks>", "")]
         rows = list(blockRows)
+        rows.extend([[count ,block.name, ("({0}:{1})".format(block.ID, block.blockData))] for block, count in counts])
+        #rows.sort(key=lambda x: alphanum_key(x[2]), reverse=True)
 
         def extendEntities():
             if entitySum:
-                rows.extend([("", "", ""), ("", "<Entities>", entitySum)])
-                rows.extend([(id[0], id[1], count) for (id, count) in sorted(entityCounts.iteritems())])
+                rows.extend([("", "", ""), (entitySum, "<Entities>", "")])
+                rows.extend([(count, id[1], id[0]) for (id, count) in sorted(entityCounts.iteritems())])
             if tileEntitySum:
-                rows.extend([("", "", ""), ("", "<TileEntities>", tileEntitySum)])
-                rows.extend([(id, id, count) for (id, count) in sorted(tileEntityCounts.iteritems())])
+                rows.extend([("", "", ""), (tileEntitySum, "<TileEntities>", "")])
+                rows.extend([(count, id, "") for (id, count) in sorted(tileEntityCounts.iteritems())])
 
         extendEntities()
 
         columns = [
-            TableColumn("ID", 120),
-            TableColumn("Name", 250),
             TableColumn("Count", 100),
+            TableColumn("Name", 250),
+            TableColumn("ID", 120),
         ]
         table = TableView(columns=columns)
         table.sortColumn = columns[2]
@@ -1933,9 +1941,9 @@ class LevelEditor(GLViewport):
         def saveToFile():
             filename = askSaveFile(mcplatform.docsFolder,
                                    title='Save analysis...',
-                                   defaultName=self.level.displayName + "_analysis",
+                                   defaultName=self.level.displayName + "_analysis.txt",
                                    filetype='Comma Separated Values\0*.txt\0\0',
-                                   suffix="",
+                                   suffix="txt",
             )
 
             if filename:
@@ -1947,12 +1955,12 @@ class LevelEditor(GLViewport):
                     csvfile.writerows(rows)
 
         saveButton = Button("Save to file...", action=saveToFile)
-        col = Column((Label("Volume: {0} blocks.".format(box.volume)), tableBacking, saveButton))
+        col = Column((Label("Analysis"), tableBacking, saveButton))
         Dialog(client=col, responses=["OK"]).present()
 
     def exportSchematic(self, schematic):
         filename = mcplatform.askSaveSchematic(
-            mcplatform.schematicsDir, self.level.displayName, "schematic")
+            directories.schematicsDir, self.level.displayName, "schematic")
 
         if filename:
             schematic.saveToFile(filename)
@@ -2127,7 +2135,7 @@ class LevelEditor(GLViewport):
             logging.exception(
                 'Wasn\'t able to open a file {file => %s}' % filename
             )
-            alert(_(u"I don't know how to open {0}:\n\n{1!r}").format(filename, e))
+            alert(tr(u"I don't know how to open {0}:\n\n{1!r}").format(filename, e))
             return
 
         assert level
@@ -2274,7 +2282,7 @@ class LevelEditor(GLViewport):
     def initWindowCaption(self):
         filename = self.level.filename
         s = os.path.split(filename)
-        title = os.path.split(s[0])[1] + os.sep + s[1] + _(u" - MCEdit ") + release.get_version()
+        title = os.path.split(s[0])[1] + os.sep + s[1] + tr(u" - MCEdit ") + release.get_version()
         title = title.encode('ascii', 'replace')
         display.set_caption(title)
 
@@ -2350,8 +2358,8 @@ class LevelEditor(GLViewport):
     def saveInfoLabelText(self):
         if self.unsavedEdits == 0:
             return ""
-        return _("{0} unsaved edits.  CTRL-{1} to save.  {2}").format(self.unsavedEdits,
-                                                                   str.upper(config.config.get('Keys', 'Save')),
+        return _("{0} unsaved edits.  {1} to save.  {2}").format(self.unsavedEdits,
+                                                                   config.config.get('Keys', 'Save'),
                                                                    "" if self.recordUndo else "(UNDO DISABLED)")
 
     @property
@@ -2473,7 +2481,7 @@ class LevelEditor(GLViewport):
                 self.currentTool.mouseUp(evt, focusPoint, direction)
 
     def mouse_up(self, evt):
-        button = remapMouseButton(evt.button)
+        button = keys.remapMouseButton(evt.button)
         evt.dict['keyname'] = "mouse{0}".format(button)
         self.key_up(evt)
 
@@ -2487,7 +2495,7 @@ class LevelEditor(GLViewport):
                 self.currentTool.mouseDrag(evt, focusPoint, direction)
 
     def mouse_down(self, evt):
-        button = remapMouseButton(evt.button)
+        button = keys.remapMouseButton(evt.button)
 
         evt.dict['keyname'] = "mouse{0}".format(button)
         self.mcedit.focus_switch = self
@@ -2636,7 +2644,7 @@ class LevelEditor(GLViewport):
 
     def key_up(self, evt):
         d = self.cameraInputs
-        keyname = getattr(evt, 'keyname', None) or key.name(evt.key)
+        keyname = evt.dict.get('keyname', None) or keys.getKey(evt)
 
         if keyname == config.config.get('Keys', 'Brake'):
             self.mainViewport.brakeOff()
@@ -2667,189 +2675,193 @@ class LevelEditor(GLViewport):
         if keyname == config.config.get('Keys', 'Pan Down'):
             cp[1] = 0.
 
-            # if keyname in ("left alt", "right alt"):
-
     def key_down(self, evt):
-        keyname = evt.dict.get('keyname', None) or key.name(evt.key)
-        if keyname == 'enter':
-            keyname = 'return'
+        keyname = evt.dict.get('keyname', None) or keys.getKey(evt)
+        if keyname == 'Enter':
+            keyname = 'Return'
+        if keyname == 'Mouse4':
+            keyname = 'Scroll Up'
+        if keyname == 'Mouse5':
+            keyname = 'Scroll Down'
 
         d = self.cameraInputs
         im = [0., 0., 0.]
         mods = evt.dict.get('mod', 0)
 
-        if keyname == 'f4' and (mods & (KMOD_ALT | KMOD_LALT | KMOD_RALT)):
+        if keyname == "ALT-F4":
             self.quit()
             return
 
-        if mods & KMOD_ALT:
-            if keyname == "z":
-                self.longDistanceMode = not self.longDistanceMode
-            if keyname in "12345":
-                name = "option" + keyname
-                if hasattr(self.currentTool, name):
-                    getattr(self.currentTool, name)()
+        if keyname == "Alt-Z":
+            self.longDistanceMode = not self.longDistanceMode
+        if keyname == "Alt-1" or keyname == "Alt-2" or keyname == "Alt-3" or keyname == "Alt-4" or keyname == "Alt-5":
+            name = "option" + keyname[len(keyname)-1:]
+            if hasattr(self.currentTool, name):
+                getattr(self.currentTool, name)()
+        if keyname == config.config.get('Keys', 'Flip'):
+            self.currentTool.flip(blocksOnly=True)
+        if keyname == config.config.get('Keys', 'Roll'):
+            self.currentTool.roll(blocksOnly=True)
+        if keyname == config.config.get('Keys', 'Rotate'):
+            self.currentTool.rotate(blocksOnly=True)
+        if keyname == config.config.get('Keys', 'Mirror'):
+            self.currentTool.mirror(blocksOnly=True)
+        if keyname == config.config.get('Keys', 'Quit'):
+            self.quit()
+            return
+        if keyname == config.config.get('Keys', 'Swap View'):
+            self.swapViewDistance()
+        if keyname == config.config.get('Keys', 'Select All'):
+            self.selectAll()
+        if keyname == config.config.get('Keys', 'Deselect'):
+            self.deselect()
+        if keyname == config.config.get('Keys', 'Cut'):
+            self.cutSelection()
+        if keyname == config.config.get('Keys', 'Copy'):
+            self.copySelection()
+        if keyname == config.config.get('Keys', 'Paste'):
+            self.pasteSelection()
 
-        elif hasattr(evt, 'cmd') and evt.cmd:
-            if keyname == config.config.get('Keys', 'Quit'):
-                self.quit()
-                return
+        if keyname == config.config.get('Keys', 'Reload World'):
+            self.reload()
 
-            if keyname == config.config.get('Keys', 'Swap View'):
-                self.swapViewDistance()
-            if keyname == config.config.get('Keys', 'Select All'):
-                self.selectAll()
-            if keyname == config.config.get('Keys', 'Deselect'):
-                self.deselect()
-            if keyname == config.config.get('Keys', 'Cut'):
-                self.cutSelection()
-            if keyname == config.config.get('Keys', 'Copy'):
-                self.copySelection()
-            if keyname == config.config.get('Keys', 'Paste'):
-                self.pasteSelection()
+        if keyname == config.config.get('Keys', 'Open'):
+            self.askOpenFile()
+        if keyname == config.config.get('Keys', 'Quick Load'):
+            self.askLoadWorld()
+        if keyname == config.config.get('Keys', 'Undo'):
+            self.undo()
+        if keyname == config.config.get('Keys', 'Save'):
+            self.saveFile()
+        if keyname == config.config.get('Keys', 'New World'):
+            self.createNewLevel()
+        if keyname == config.config.get('Keys', 'Close World'):
+            self.closeEditor()
+        if keyname == config.config.get('Keys', 'World Info'):
+            self.showWorldInfo()
+        if keyname == config.config.get('Keys', 'Goto Panel'):
+            self.showGotoPanel()
 
-            if keyname == config.config.get('Keys', 'Reload World'):
-                self.reload()
+        if keyname == config.config.get('Keys', 'Export Selection'):
+            self.selectionTool.exportSelection()
 
-            if keyname == config.config.get('Keys', 'Open'):
-                self.askOpenFile()
-            if keyname == config.config.get('Keys', 'Load'):
-                self.askLoadWorld()
-            if keyname == config.config.get('Keys', 'Undo'):
-                self.undo()
-            if keyname == config.config.get('Keys', 'Save'):
-                self.saveFile()
-            if keyname == config.config.get('Keys', 'New World'):
-                self.createNewLevel()
-            if keyname == config.config.get('Keys', 'Close World'):
-                self.closeEditor()
-            if keyname == config.config.get('Keys', 'World Info'):
-                self.showWorldInfo()
-            if keyname == config.config.get('Keys', 'Goto Panel'):
-                self.showGotoPanel()
+        if keyname == 'Ctrl-Alt-F9':
+            self.parent.reloadEditor()
+            # ===========================================================
+            # debugPanel = Panel()
+            # buttonColumn = [
+            #    Button("Reload Editor", action=self.parent.reloadEditor),
+            # ]
+            # debugPanel.add(Column(buttonColumn))
+            # debugPanel.shrink_wrap()
+            # self.add_centered(debugPanel)
+            # ===========================================================
 
-            if keyname == config.config.get('Keys', 'Export Selection'):
-                self.selectionTool.exportSelection()
+        if keyname == 'Shift-Ctrl-F9':
+            raise GL.GLError(err=1285,
+            description="User pressed CONTROL-SHIFT-F9, requesting a GL Memory Error")
+        if keyname == 'Ctrl-F9':
+            try:
+                expr = input_text(">>> ", 600)
+                expr = compile(expr, 'eval', 'single')
+                alert("Result: {0!r}".format(eval(expr, globals(), locals())))
+            except Exception, e:
+                alert("Exception: {0!r}".format(e))
 
-            if keyname == 'f9':
-                if mods & KMOD_ALT:
-                    self.parent.reloadEditor()
-                    # ===========================================================
-                    # debugPanel = Panel()
-                    # buttonColumn = [
-                    #    Button("Reload Editor", action=self.parent.reloadEditor),
-                    # ]
-                    # debugPanel.add(Column(buttonColumn))
-                    # debugPanel.shrink_wrap()
-                    # self.add_centered(debugPanel)
-                    # ===========================================================
+        if keyname == 'Ctrl-F10':
+            def causeError():
+                raise ValueError("User pressed CONTROL-F10, requesting a program error.")
 
-                elif mods & KMOD_SHIFT:
-                    raise GL.GLError(err=1285,
-                                     description="User pressed CONTROL-SHIFT-F9, requesting a GL Memory Error")
-                else:
-                    try:
-                        expr = input_text(">>> ", 600)
-                        expr = compile(expr, 'eval', 'single')
-                        alert("Result: {0!r}".format(eval(expr, globals(), locals())))
-                    except Exception, e:
-                        alert("Exception: {0!r}".format(e))
+        if keyname == 'Ctrl-Alt-F10':
+            alert("MCEdit, a Minecraft World Editor\n\nCopyright 2010 David Rio Vierra")
+        if keyname == 'Shift-Ctrl-F10':
+            mceutils.alertException(causeError)()
+        if keyname == 'F10':
+            causeError()
 
-            if keyname == 'f10':
-                def causeError():
-                    raise ValueError("User pressed CONTROL-F10, requesting a program error.")
+        if keyname == 'Tab':
+            self.swapViewports()
 
-                if mods & KMOD_ALT:
-                    alert("MCEdit, a Minecraft World Editor\n\nCopyright 2010 David Rio Vierra")
-                elif mods & KMOD_SHIFT:
-                    mceutils.alertException(causeError)()
-                else:
-                    causeError()
+        if keyname == config.config.get('Keys', 'Brake'):
+            self.mainViewport.brakeOn()
 
-        else:
-            if keyname == 'tab':
-                self.swapViewports()
+        if keyname == config.config.get('Keys', 'Reset Reach'):
+            self.resetReach()
+        if keyname == config.config.get('Keys', 'Increase Reach'):
+            self.increaseReach()
+        if keyname == config.config.get('Keys', 'Decrease Reach'):
+            self.decreaseReach()
 
-            if keyname == config.config.get('Keys', 'Brake'):
-                self.mainViewport.brakeOn()
+        if keyname == config.config.get('Keys', 'Flip'):
+            self.currentTool.flip()
+        if keyname == config.config.get('Keys', 'Roll'):
+            self.currentTool.roll()
+        if keyname == config.config.get('Keys', 'Rotate'):
+            self.currentTool.rotate()
+        if keyname == config.config.get('Keys', 'Mirror'):
+            self.currentTool.mirror()
+        if keyname == config.config.get('Keys', 'Swap'):
+            self.currentTool.swap()
 
-            if keyname == config.config.get('Keys', 'Reset Reach'):
-                self.resetReach()
-            if keyname == config.config.get('Keys', 'Increase Reach'):
-                self.increaseReach()
-            if keyname == config.config.get('Keys', 'Decrease Reach'):
-                self.decreaseReach()
+        if keyname == 'Escape':
+            self.toolbar.tools[0].endSelection()
+            self.mouseLookOff()
+            self.showControls()
 
-            if keyname == config.config.get('Keys', 'Flip'):
-                self.currentTool.flip()
-            if keyname == config.config.get('Keys', 'Roll'):
-                self.currentTool.roll()
-            if keyname == config.config.get('Keys', 'Rotate'):
-                self.currentTool.rotate()
-            if keyname == config.config.get('Keys', 'Mirror'):
-                self.currentTool.mirror()
-            if keyname == config.config.get('Keys', 'Swap'):
-                self.currentTool.swap()
+        # movement
+        if keyname == config.config.get('Keys', 'Left'):
+            d[0] = -1.
+            im[0] = -1.
+        if keyname == config.config.get('Keys', 'Right'):
+            d[0] = 1.
+            im[0] = 1.
+        if keyname == config.config.get('Keys', 'Forward'):
+            d[2] = 1.
+            im[2] = 1.
+        if keyname == config.config.get('Keys', 'Back'):
+            d[2] = -1.
+            im[2] = -1.
+        if keyname == config.config.get('Keys', 'Up'):
+            d[1] = 1.
+            im[1] = 1.
+        if keyname == config.config.get('Keys', 'Down'):
+            d[1] = -1.
+            im[1] = -1.
 
-            if keyname == 'escape':
-                self.toolbar.tools[0].endSelection()
-                self.mouseLookOff()
-                self.showControls()
+        cp = self.cameraPanKeys
+        if keyname == config.config.get('Keys', 'Pan Left'):
+            cp[0] = -1.
+        if keyname == config.config.get('Keys', 'Pan Right'):
+            cp[0] = 1.
+        if keyname == config.config.get('Keys', 'Pan Up'):
+            cp[1] = -1.
+        if keyname == config.config.get('Keys', 'Pan Down'):
+            cp[1] = 1.
 
-            # movement
-            if keyname == config.config.get('Keys', 'Left'):
-                d[0] = -1.
-                im[0] = -1.
-            if keyname == config.config.get('Keys', 'Right'):
-                d[0] = 1.
-                im[0] = 1.
-            if keyname == config.config.get('Keys', 'Forward'):
-                d[2] = 1.
-                im[2] = 1.
-            if keyname == config.config.get('Keys', 'Back'):
-                d[2] = -1.
-                im[2] = -1.
-            if keyname == config.config.get('Keys', 'Up'):
-                d[1] = 1.
-                im[1] = 1.
-            if keyname == config.config.get('Keys', 'Down'):
-                d[1] = -1.
-                im[1] = -1.
+        if keyname == config.config.get('Keys', 'Confirm Construction'):
+            self.confirmConstruction()
 
-            cp = self.cameraPanKeys
-            if keyname == config.config.get('Keys', 'Pan Left'):
-                cp[0] = -1.
-            if keyname == config.config.get('Keys', 'Pan Right'):
-                cp[0] = 1.
-            if keyname == config.config.get('Keys', 'Pan Up'):
-                cp[1] = -1.
-            if keyname == config.config.get('Keys', 'Pan Down'):
-                cp[1] = 1.
+        # =======================================================================
+        # if keyname == config.config.get('Keys','Toggle Flat Shading'):
+        #    self.renderer.swapMipmapping()
+        # if keyname == config.config.get('Keys','Toggle Lighting'):
+        #    self.renderer.toggleLighting()
+        # =======================================================================
 
-            if keyname == config.config.get('Keys', 'Confirm Construction'):
-                self.confirmConstruction()
+        if keyname == config.config.get('Keys', 'Toggle FPS Counter'):
+            self.swapDebugLevels()
 
-            # =======================================================================
-            # if keyname == config.config.get('Keys','Toggle Flat Shading'):
-            #    self.renderer.swapMipmapping()
-            # if keyname == config.config.get('Keys','Toggle Lighting'):
-            #    self.renderer.toggleLighting()
-            # =======================================================================
+        if keyname == config.config.get('Keys', 'Toggle Renderer'):
+            self.renderer.render = not self.renderer.render
 
-            if keyname == config.config.get('Keys', 'Toggle FPS Counter'):
-                self.swapDebugLevels()
+        if keyname == config.config.get('Keys', 'Delete Blocks'):
+            self.deleteSelectedBlocks()
 
-            if keyname == config.config.get('Keys', 'Toggle Renderer'):
-                self.renderer.render = not self.renderer.render
+        if keyname == '1' or keyname == '2' or keyname == '3' or keyname == '4' or keyname == '5' or keyname == '6' or keyname == '7' or keyname == '8' or keyname == '9':
+            self.toolbar.selectTool(int(keyname) - 1)
 
-            if keyname == config.config.get('Keys', 'Delete Blocks'):
-                self.deleteSelectedBlocks()
-
-            if keyname in "123456789":
-                self.toolbar.selectTool(int(keyname) - 1)
-
-            if keyname in ('f1', 'f2', 'f3', 'f4', 'f5'):
-                self.mcedit.loadRecentWorldNumber(int(keyname[1]))
+        if keyname in ('F1', 'F2', 'F3', 'F4', 'F5'):
+            self.mcedit.loadRecentWorldNumber(int(keyname[1]))
 
     def showGotoPanel(self):
 
@@ -2907,6 +2919,7 @@ class LevelEditor(GLViewport):
         self.removeWorker(self.renderer)
         self.renderer.level = None
         self.mcedit.removeEditor()
+        self.controlPanel.dismiss()
 
     def repairRegions(self):
         worldFolder = self.level.worldFolder
@@ -3086,15 +3099,15 @@ class LevelEditor(GLViewport):
 
     @mceutils.alertException
     def askLoadWorld(self):
-        if not os.path.isdir(pymclevel.saveFileDir):
-            alert(_(u"Could not find the Minecraft saves directory!\n\n({0} was not found or is not a directory)").format(
-                pymclevel.saveFileDir))
+        if not os.path.isdir(directories.minecraftSaveFileDir):
+            alert(tr(u"Could not find the Minecraft saves directory!\n\n({0} was not found or is not a directory)").format(
+                directories.minecraftSaveFileDir))
             return
 
         worldPanel = Widget()
 
-        potentialWorlds = os.listdir(pymclevel.saveFileDir)
-        potentialWorlds = [os.path.join(pymclevel.saveFileDir, p) for p in potentialWorlds]
+        potentialWorlds = os.listdir(directories.minecraftSaveFileDir)
+        potentialWorlds = [os.path.join(directories.minecraftSaveFileDir, p) for p in potentialWorlds]
         worldFiles = [p for p in potentialWorlds if pymclevel.MCInfdevOldLevel.isLevel(p)]
         worlds = []
         for f in worldFiles:
@@ -3137,9 +3150,18 @@ class LevelEditor(GLViewport):
                 return u"{0} seconds since the epoch.".format(lp)
 
         def nameFormat(w):
-            if w.LevelName == w.displayName:
-                return w.LevelName
-            return u"{0} ({1})".format(w.LevelName, w.displayName)
+            try:
+                if w.LevelName == w.displayName:
+                    return w.LevelName
+                return u"{0} ({1})".format(w.LevelName, w.displayName)
+            except:
+                try:
+                    return w.LevelName
+                except:
+                    try:
+                        return w.displayName
+                    except:
+                        return "[UNABLE TO READ]"
 
         worldData = [[dateFormat(d), nameFormat(w), str(w.dimensions.keys())[1:-1], w, d]
                      for w, d in ((w, dateobj(w.LastPlayed)) for w in worlds)]
@@ -3217,7 +3239,7 @@ class LevelEditor(GLViewport):
         result = Dialog(client=newWorldPanel, responses=["Create", "Cancel"]).present()
         if result == "Cancel":
             return
-        filename = mcplatform.askCreateWorld(pymclevel.saveFileDir)
+        filename = mcplatform.askCreateWorld(directories.minecraftSaveFileDir)
 
         if not filename:
             return
@@ -3629,7 +3651,7 @@ class LevelEditor(GLViewport):
             if None is cr:
                 return
 
-            crNames = [_("%s - %0.1fkb") % (type(br).__name__, br.bufferSize() / 1000.0) for br in cr.blockRenderers]
+            crNames = [tr("%s - %0.1fkb") % (type(br).__name__, br.bufferSize() / 1000.0) for br in cr.blockRenderers]
             infoLabel = Label("\n".join(crNames))
 
             infoPanel.remove(infoPanel.subwidgets[0])

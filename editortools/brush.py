@@ -12,10 +12,7 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE."""
 
-#Modified by D.C.-G. for translation purposes
-
-#This code has been modified by Rubisk, removing the randomization chance for erosion, and adding a percentual brush.
-#Feel free to modify/distribute my code. 
+# Modified by D.C.-G. for translation purposes
 
 import collections
 import random
@@ -24,8 +21,11 @@ import numpy
 from numpy import newaxis
 import pygame
 from albow import AttrRef, Button, ValueDisplay, Row, Label, ValueButton, Column, IntField, CheckBox, FloatField, alert
+#-#
 from albow.translate import _
+#-#
 import bresenham
+import leveleditor
 from editortools.blockpicker import BlockPicker
 from editortools.blockview import BlockButton
 from editortools.editortool import EditorTool
@@ -33,7 +33,7 @@ from editortools.tooloptions import ToolOptions
 from glbackground import Panel
 from glutils import gl
 import mcplatform
-from pymclevel import block_fill, BoundingBox
+from pymclevel import block_fill, BoundingBox, materials, blockrotation
 import pymclevel
 from pymclevel.level import extractHeights
 from mceutils import ChoiceButton, CheckBoxLabel, showProgress, IntInputRow, alertException, drawTerrainCuttingWire
@@ -102,23 +102,178 @@ class BrushMode(object):
 
 class Modes:
     class Fill(BrushMode):
+
         name = "Fill"
+        options =['airFill']
 
         def createOptions(self, panel, tool):
+
+            airFill = CheckBoxLabel("Fill Air", ref=AttrRef(tool, 'airFill'))
+
             col = [
                 panel.modeStyleGrid,
                 panel.hollowRow,
                 panel.noiseInput,
                 panel.brushSizeRows,
                 panel.blockButton,
+                airFill,
             ]
             return col
 
         def applyToChunkSlices(self, op, chunk, slices, brushBox, brushBoxThisChunk):
             brushMask = createBrushMask(op.brushSize, op.brushStyle, brushBox.origin, brushBoxThisChunk, op.noise, op.hollow)
 
+
+
+            blocks = chunk.Blocks[slices]
+            data = chunk.Data[slices]
+
+            airFill = op.options['airFill']
+
+            if airFill == False:
+                airtable = numpy.zeros((materials.id_limit, 16), dtype='bool')
+                airtable[0] = True
+                replaceMaskAir = airtable[blocks, data]
+                brushMask &= ~replaceMaskAir
+
+
             chunk.Blocks[slices][brushMask] = op.blockInfo.ID
             chunk.Data[slices][brushMask] = op.blockInfo.blockData
+
+    class VariedFill(BrushMode):
+
+        name = "Varied Fill"
+        options =['airFill','chanceA','chanceB','chanceC','chanceD','replaceWith1','replaceWith2','replaceWith3','replaceWith4']
+
+        def createOptions(self, panel, tool):
+
+            airFill = CheckBoxLabel("Fill Air", ref=AttrRef(tool, 'airFill'))
+
+            replaceWith1 = BlockButton(
+            tool.editor.level.materials,
+            ref=AttrRef(tool, 'replaceWith1'),
+            recentBlocks=tool.recentReplaceBlocks)
+            
+            replaceWith2 = BlockButton(
+            tool.editor.level.materials,
+            ref=AttrRef(tool, 'replaceWith2'),
+            recentBlocks=tool.recentReplaceBlocks)
+
+            replaceWith3 = BlockButton(
+            tool.editor.level.materials,
+            ref=AttrRef(tool, 'replaceWith3'),
+            recentBlocks=tool.recentReplaceBlocks)
+
+            replaceWith4 = BlockButton(
+            tool.editor.level.materials,
+            ref=AttrRef(tool, 'replaceWith4'),
+            recentBlocks=tool.recentReplaceBlocks)
+
+            seperator = Label("---")
+            
+            chanceA = IntInputRow("Weight 1: ", ref=AttrRef(tool, 'chanceA'), min=0, width=50)
+            chanceB = IntInputRow("Weight 2: ", ref=AttrRef(tool, 'chanceB'), min=0, width=50)
+            chanceC = IntInputRow("Weight 3: ", ref=AttrRef(tool, 'chanceC'), min=0, width=50)
+            chanceD = IntInputRow("Weight 4: ", ref=AttrRef(tool, 'chanceD'), min=0, width=50)
+
+            col = [
+                panel.modeStyleGrid,
+                panel.hollowRow,
+                panel.noiseInput,
+                panel.brushSizeRows,
+                replaceWith1,
+                replaceWith2,
+                replaceWith3,
+                replaceWith4,
+                chanceA, 
+                chanceB,
+                chanceC, 
+                chanceD,
+                airFill,
+            ]
+            return col
+
+        def applyToChunkSlices(self, op, chunk, slices, brushBox, brushBoxThisChunk):
+            brushMask = createBrushMask(op.brushSize, op.brushStyle, brushBox.origin, brushBoxThisChunk, op.noise, op.hollow)
+
+            blocks = chunk.Blocks[slices]
+            data = chunk.Data[slices]
+
+            airFill = op.options['airFill']
+            replaceWith1 = op.options['replaceWith1']
+            chanceA = op.options['chanceA']
+            replaceWith2 = op.options['replaceWith2']
+            chanceB = op.options['chanceB']
+            replaceWith3 = op.options['replaceWith3']
+            chanceC = op.options['chanceC']
+            replaceWith4 = op.options['replaceWith4']
+            chanceD = op.options['chanceD']
+
+            totalChance = chanceA + chanceB + chanceC + chanceD
+
+            if totalChance == 0:
+                print "Total Chance value can't be 0"
+                return
+
+            if airFill == False:
+                airtable = numpy.zeros((materials.id_limit, 16), dtype='bool')
+                airtable[0] = True
+                replaceMaskAir = airtable[blocks, data]
+                brushMask &= ~replaceMaskAir
+
+            brushMaskOption1 = numpy.copy(brushMask)
+            brushMaskOption2 = numpy.copy(brushMask)
+            brushMaskOption3 = numpy.copy(brushMask)
+            brushMaskOption4 = numpy.copy(brushMask)
+
+            x=-1
+            y=-1
+            z=-1
+
+            for array_x in brushMask:
+                x += 1
+                y = -1
+                for array_y in brushMask[x]:
+                    y += 1
+                    z=-1
+                    for array_z in brushMask[x][y]:
+                        z += 1
+                        if brushMask[x][y][z]:
+                            randomChance = random.randint(1, totalChance)
+                            if chanceA >= randomChance:
+                                brushMaskOption1[x][y][z] = True
+                                brushMaskOption2[x][y][z] = False
+                                brushMaskOption3[x][y][z] = False
+                                brushMaskOption4[x][y][z] = False
+                                continue
+                            if chanceA + chanceB >= randomChance:
+                                brushMaskOption1[x][y][z] = False
+                                brushMaskOption2[x][y][z] = True
+                                brushMaskOption3[x][y][z] = False
+                                brushMaskOption4[x][y][z] = False
+                                continue
+                            if chanceA + chanceB + chanceC >= randomChance:
+                                brushMaskOption1[x][y][z] = False
+                                brushMaskOption2[x][y][z] = False
+                                brushMaskOption3[x][y][z] = True
+                                brushMaskOption4[x][y][z] = False
+                                continue
+                            if chanceA + chanceB + chanceC + chanceD >= randomChance:
+                                brushMaskOption1[x][y][z] = False
+                                brushMaskOption2[x][y][z] = False
+                                brushMaskOption3[x][y][z] = False
+                                brushMaskOption4[x][y][z] = True
+                                continue
+
+            blocks[brushMaskOption1] = replaceWith1.ID
+            data[brushMaskOption1] = replaceWith1.blockData
+            blocks[brushMaskOption2] = replaceWith2.ID
+            data[brushMaskOption2] = replaceWith2.blockData
+            blocks[brushMaskOption3] = replaceWith3.ID
+            data[brushMaskOption3] = replaceWith3.blockData
+            blocks[brushMaskOption4] = replaceWith4.ID
+            data[brushMaskOption4] = replaceWith4.blockData
+
 
     class FloodFill(BrushMode):
         name = "Flood Fill"
@@ -150,12 +305,12 @@ class Modes:
             checkData = (doomedBlock not in (8, 9, 10, 11))
             indiscriminate = op.options['indiscriminate']
 
-            if doomedBlock == op.blockInfo.ID:
-                return
             if indiscriminate:
                 checkData = False
                 if doomedBlock == 2:  # grass
                     doomedBlock = 3  # dirt
+            if doomedBlock == op.blockInfo.ID and (doomedBlockData == op.blockInfo.blockData or checkData == False):
+                return
 
             x, y, z = point
             saveUndoChunk(x // 16, z // 16)
@@ -206,7 +361,15 @@ class Modes:
         name = "Replace"
 
         def createOptions(self, panel, tool):
-            return Modes.Fill.createOptions(self, panel, tool) + [panel.replaceBlockButton]
+            col = [
+                panel.modeStyleGrid,
+                panel.hollowRow,
+                panel.noiseInput,
+                panel.brushSizeRows,
+                panel.blockButton,
+                panel.replaceBlockButton,
+            ]
+            return col
 
         def applyToChunkSlices(self, op, chunk, slices, brushBox, brushBoxThisChunk):
 
@@ -228,8 +391,6 @@ class Modes:
             replaceTable = block_fill.blockReplaceTable(blocksToReplace)
             replaceMask = replaceTable[blocks, data]
             brushMask &= replaceMask
-
-            print replaceWith.ID
 
             blocks[brushMask] = replaceWith.ID
             data[brushMask] = replaceWith.blockData
@@ -399,8 +560,22 @@ class Modes:
                 return
 
             blocks = erosionArea.Blocks
+            data = erosionArea.Data
             bins = numpy.bincount(blocks.ravel())
             fillBlockID = bins.argmax()
+            xcount = -1
+
+            for x in blocks:
+                xcount += 1
+                ycount = -1
+                for y in blocks[xcount]:
+                    ycount += 1
+                    zcount = -1
+                    for z in blocks[xcount][ycount]:
+                        zcount += 1
+                        if blocks[xcount][ycount][zcount] == fillBlockID:
+                            fillBlockData = data[xcount][ycount][zcount]
+
 
             def getNeighbors(solidBlocks):
                 neighbors = numpy.zeros(solidBlocks.shape, dtype='uint8')
@@ -418,7 +593,7 @@ class Modes:
 
                 brushMask = createBrushMask(op.brushSize, op.brushStyle)
                 erodeBlocks = neighbors < 5
-                if op.options['naturalEarth']:
+                if op.options['erosionNoise']:
                     erodeBlocks &= (numpy.random.random(erodeBlocks.shape) > 0.3)
                 erodeBlocks[1:-1, 1:-1, 1:-1] &= brushMask
                 blocks[erodeBlocks] = 0
@@ -430,6 +605,7 @@ class Modes:
                 fillBlocks &= ~solidBlocks
                 fillBlocks[1:-1, 1:-1, 1:-1] &= brushMask
                 blocks[fillBlocks] = fillBlockID
+                data[fillBlocks] = fillBlockData
 
             op.level.copyBlocksFrom(erosionArea, erosionArea.bounds.expand(-1), brushBox.origin + (1, 1, 1))
 
@@ -567,9 +743,10 @@ class BrushOperation(Operation):
     # brushModeNames = ["Fill", "Flood Fill", "Replace", "Erode", "Topsoil", "Paste"]  # "Smooth", "Flatten", "Raise", "Lower", "Build", "Erode", "Evert"]
     brushModeClasses = [
         Modes.Fill,
+        Modes.VariedFill,
         Modes.FloodFill,
         Modes.Replace,
-		Modes.Vary,
+        Modes.Vary,
         Modes.Erode,
         Modes.Topsoil,
         Modes.Paste
@@ -718,6 +895,24 @@ class BrushPanel(Panel):
         self.blockButton.blockInfo = self.replaceBlockButton.blockInfo
         self.replaceBlockButton.blockInfo = b
 
+    def rotate(self):
+        Block = [[[0 for k in xrange(1)] for j in xrange(1)] for i in xrange(1)]
+        Data = [[[0 for k in xrange(1)] for j in xrange(1)] for i in xrange(1)]
+        Block[0][0][0] = self.blockButton.blockInfo.ID
+        Data[0][0][0] = self.blockButton.blockInfo.blockData
+        blockrotation.RotateLeft(Block, Data)
+        self.blockButton.blockInfo.blockData = Data[0][0][0]
+    
+    def roll(self):
+        Block = [[[0 for k in xrange(1)] for j in xrange(1)] for i in xrange(1)]
+        Data = [[[0 for k in xrange(1)] for j in xrange(1)] for i in xrange(1)]
+        Block[0][0][0] = self.blockButton.blockInfo.ID
+        Data[0][0][0] = self.blockButton.blockInfo.blockData
+        blockrotation.Roll(Block, Data)
+        self.blockButton.blockInfo.blockData = Data[0][0][0]
+
+        
+
 
 class BrushToolOptions(ToolOptions):
     def __init__(self, tool):
@@ -787,6 +982,7 @@ class BrushTool(CloneTool):
     replaceWith3 = 0
     replaceWith4 = 0
     erosionNoise = True
+    airFill = True
 
 
 
@@ -1029,21 +1225,31 @@ class BrushTool(CloneTool):
     def toolEnabled(self):
         return True
 
-    def rotate(self):
+    def rotate(self,blocksOnly=False):
         offs = self.reticleOffset
         dist = self.editor.cameraToolDistance
         W, H, L = self.brushSize
         self.brushSize = L, H, W
         self.reticleOffset = offs
         self.editor.cameraToolDistance = dist
+        rotateBlockBrush = leveleditor.Settings.rotateBlockBrush.get()
+        if (rotateBlockBrush):
+            self.panel.rotate()
+        else:
+            print "Not rotating block because rotation is turned off in options menu"
 
-    def mirror(self):
+    def mirror(self,blocksOnly=False):
         offs = self.reticleOffset
         dist = self.editor.cameraToolDistance
         W, H, L = self.brushSize
         self.brushSize = W, L, H
         self.reticleOffset = offs
         self.editor.cameraToolDistance = dist
+        rotateBlockBrush = leveleditor.Settings.rotateBlockBrush.get()
+        if (rotateBlockBrush):
+            self.panel.roll()
+        else:
+            print "Not rotating block because rotation is turned off in options menu"
 
     def toolReselected(self):
         if self.brushMode.name == "Replace":
@@ -1051,10 +1257,10 @@ class BrushTool(CloneTool):
         else:
             self.panel.pickFillBlock()
 
-    def flip(self):
+    def flip(self,blocksOnly=False):
         self.decreaseBrushSize()
 
-    def roll(self):
+    def roll(self,blocksOnly=False):
         self.increaseBrushSize()
 
     def swap(self):

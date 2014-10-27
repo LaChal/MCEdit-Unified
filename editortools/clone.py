@@ -50,6 +50,7 @@ CloneSettings.copyAir = CloneSettings("Copy Air", True)
 CloneSettings.copyWater = CloneSettings("Copy Water", True)
 CloneSettings.copyBiomes = CloneSettings("Copy Biomes", True)
 CloneSettings.staticCommands = CloneSettings("Change Coordinates", False)
+CloneSettings.moveSpawnerPos = CloneSettings("Change Spawners Pos", False)
 CloneSettings.placeImmediately = CloneSettings("Place Immediately", True)
 
 
@@ -104,7 +105,7 @@ class CoordsInput(Widget):
 
 
 class BlockCopyOperation(Operation):
-    def __init__(self, editor, sourceLevel, sourceBox, destLevel, destPoint, copyAir, copyWater, copyBiomes, staticCommands):
+    def __init__(self, editor, sourceLevel, sourceBox, destLevel, destPoint, copyAir, copyWater, copyBiomes, staticCommands, moveSpawnerPos):
         super(BlockCopyOperation, self).__init__(editor, destLevel)
         self.sourceLevel = sourceLevel
         self.sourceBox = sourceBox
@@ -113,6 +114,7 @@ class BlockCopyOperation(Operation):
         self.copyWater = copyWater
         self.copyBiomes = copyBiomes
         self.staticCommands = staticCommands
+        self.moveSpawnerPos = moveSpawnerPos
         self.sourceBox, self.destPoint = block_copy.adjustCopyParameters(self.level, self.sourceLevel, self.sourceBox,
                                                                          self.destPoint)
 
@@ -140,7 +142,7 @@ class BlockCopyOperation(Operation):
 
         with setWindowCaption("Copying - "):
             i = self.level.copyBlocksFromIter(self.sourceLevel, self.sourceBox, self.destPoint, blocksToCopy,
-                                              create=True, biomes=self.copyBiomes, staticCommands=self.staticCommands, first=False)
+                                              create=True, biomes=self.copyBiomes, staticCommands=self.staticCommands, moveSpawnerPos=self.moveSpawnerPos, first=False)
             showProgress(_("Copying {0:n} blocks...").format(self.sourceBox.volume), i)
 
     def bufferSize(self):
@@ -149,7 +151,7 @@ class BlockCopyOperation(Operation):
 
 class CloneOperation(Operation):
     def __init__(self, editor, sourceLevel, sourceBox, originSourceBox, destLevel, destPoint, copyAir, copyWater,
-                 copyBiomes, staticCommands, repeatCount):
+                 copyBiomes, staticCommands, moveSpawnerPos,repeatCount):
         super(CloneOperation, self).__init__(editor, destLevel)
 
         self.blockCopyOps = []
@@ -161,7 +163,7 @@ class CloneOperation(Operation):
 
         for i in range(repeatCount):
             op = BlockCopyOperation(editor, sourceLevel, sourceBox, destLevel, destPoint, copyAir, copyWater,
-                                    copyBiomes, staticCommands)
+                                    copyBiomes, staticCommands, moveSpawnerPos)
             dirty = op.dirtyBox()
 
             # bounds check - xxx move to BoundingBox
@@ -330,6 +332,14 @@ class CloneToolPanel(Panel):
         self.staticCommandsCheckBox.tooltipText = self.staticCommandsLabel.tooltipText
 
         staticCommandsRow = Row((self.staticCommandsCheckBox, self.staticCommandsLabel))
+        
+        self.moveSpawnerPosCheckBox = CheckBox(ref=AttrRef(self.tool, "moveSpawnerPos"))
+        self.moveSpawnerPosLabel = Label("Change Spawners")
+        self.moveSpawnerPosLabel.mouse_down = self.moveSpawnerPosCheckBox.mouse_down
+        self.moveSpawnerPosLabel.tooltipText = "Check to automatically change the position of the mobs in spawners when moved.\nShortcut: ALT-5"
+        self.moveSpawnerPosCheckBox.tooltipText = self.moveSpawnerPosLabel.tooltipText
+
+        moveSpawnerPosRow = Row((self.moveSpawnerPosCheckBox, self.moveSpawnerPosLabel))
 
         self.performButton = Button("Clone", width=100, align="c")
         self.performButton.tooltipText = "Shortcut: ENTER"
@@ -338,11 +348,11 @@ class CloneToolPanel(Panel):
         if self.useOffsetInput:
             col = Column((
             rotateRow, rollRow, flipRow, mirrorRow, alignRow, self.offsetInput, repeatRow, scaleRow, copyAirRow,
-            copyWaterRow, copyBiomesRow, staticCommandsRow, self.performButton))
+            copyWaterRow, copyBiomesRow, staticCommandsRow, moveSpawnerPosRow,self.performButton))
         else:
             col = Column((
             rotateRow, rollRow, flipRow, mirrorRow, alignRow, self.nudgeButton, copyAirRow, copyWaterRow, copyBiomesRow,
-            staticCommandsRow, self.performButton))
+            staticCommandsRow, moveSpawnerPosRow,self.performButton))
 
         self.add(col)
         self.anchor = "lwh"
@@ -433,6 +443,7 @@ class CloneTool(EditorTool):
     copyWater = CloneSettings.copyWater.configProperty()
     copyBiomes = CloneSettings.copyBiomes.configProperty()
     staticCommands = CloneSettings.staticCommands.configProperty()
+    moveSpawnerPos = CloneSettings.moveSpawnerPos.configProperty()
 
     def nudge(self, nudge):
         if self.destPoint is None:
@@ -791,40 +802,53 @@ class CloneTool(EditorTool):
         return self.level
 
     @alertException
-    def rotate(self, amount=1):
+    def rotate(self, amount=1, blocksOnly=False):
         if self.canRotateLevel:
             self.rotation += amount
             self.rotation &= 0x3
             for i in range(amount & 0x3):
-                self.level.rotateLeft()
+                if blocksOnly:
+                    self.level.rotateLeftBlocks()
+                else:
+                    self.level.rotateLeft()
 
             self.previewRenderer.level = self.level
 
     @alertException
-    def roll(self, amount=1):
+    def roll(self, amount=1, blocksOnly=False):
         if self.canRotateLevel:
             for i in range(amount & 0x3):
-                self.level.roll()
+                if blocksOnly:
+                    self.level.rollBlocks()
+                else:
+                    self.level.roll()
 
             self.previewRenderer.level = self.level
 
     @alertException
-    def flip(self, amount=1):
+    def flip(self, amount=1, blocksOnly=False):
         if self.canRotateLevel:
             for i in range(amount & 0x1):
-                self.level.flipVertical()
-
+                if blocksOnly:
+                    self.level.flipVertical()
+                else:
+                    self.level.flipVerticalBlocks()
             self.previewRenderer.level = self.level
 
     @alertException
-    def mirror(self):
+    def mirror(self, blocksOnly=False):
         if self.canRotateLevel:
             yaw = int(self.editor.mainViewport.yaw) % 360
             if (yaw >= 45 and yaw < 135) or (yaw > 225 and yaw <= 315):
-                self.level.flipEastWest()
+                if blocksOnly:
+                    self.level.flipEastWestBlocks()
+                else:
+                    self.level.flipEastWest()
             else:
-                self.level.flipNorthSouth()
-
+                if blocksOnly:
+                    self.level.flipNorthSouthBlocks()
+                else:
+                    self.level.flipNorthSouth()
             self.previewRenderer.level = self.level
 
     def option1(self):
@@ -837,7 +861,10 @@ class CloneTool(EditorTool):
         self.copyBiomes = not self.copyBiomes
         
     def option4(self):
-    	self.staticCommands = not self.staticCommands    
+    	self.staticCommands = not self.staticCommands
+    	
+    def option5(self):
+        self.moveSpawnerPos = not self.moveSpawnerPos
 
     draggingFace = None
     draggingStartPoint = None
@@ -990,6 +1017,7 @@ class CloneTool(EditorTool):
                             copyWater=self.copyWater,
                             copyBiomes=self.copyBiomes,
                             staticCommands=self.staticCommands,
+                            moveSpawnerPos=self.moveSpawnerPos,
                             repeatCount=self.repeatCount)
 
         self.editor.toolbar.selectTool(
@@ -1130,7 +1158,7 @@ class ConstructionTool(CloneTool):
             if filename:
                 # self.editor.toolbar.selectTool(-1)
                 alert(
-                    _(u"I don't know how to import this file: {0}.\n\nError: {1!r}").format(os.path.basename(filename), e))
+                    tr(u"I don't know how to import this file: {0}.\n\nError: {1!r}").format(os.path.basename(filename), e))
 
             return
 

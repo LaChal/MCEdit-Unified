@@ -23,7 +23,6 @@ from albow import alert, ask, Button, Column, Label, root, Row, ValueButton, Wid
 #-#
 from albow.translate import _
 #-#
-import config
 from cStringIO import StringIO
 from datetime import datetime
 import directories
@@ -55,20 +54,9 @@ def alertException(func):
             alert("Canceled.")
         except pymclevel.infiniteworld.SessionLockLost as e:
             alert(e.message + _("\n\nYour changes cannot be saved."))
-
         except Exception, e:
             logging.exception("Exception:")
-            if ask(_("Error during {0}: {1!r}").format(func, e)[:1000], ["Report Error", "Okay"], default=1,
-                   cancel=0) == "Report Error":
-                try:
-                    import squash_python
-
-                    squash_python.get_client().recordException(*sys.exc_info())
-                except ImportError:
-                    pass
-                except Exception:
-                    logging.exception("Error while recording exception data:")
-
+            ask(_("Error during {0}: {1!r}").format(func, e)[:1000], ["OK"], cancel=0)
     return _alertException
 
 
@@ -283,7 +271,7 @@ def drawTerrainCuttingWire(box,
 def loadAlphaTerrainTexture():
     pngFile = None
 
-    texW, texH, terraindata = loadPNGFile(os.path.join(directories.dataDir, "terrain.png"))
+    texW, texH, terraindata = loadPNGFile(os.path.join(directories.getDataDir(), "terrain.png"))
 
     def _loadFunc():
         loadTextureFunc(texW, texH, terraindata)
@@ -324,7 +312,7 @@ def loadTextureFunc(w, h, ndata):
 
 
 def loadPNGTexture(filename, *a, **kw):
-    filename = os.path.join(directories.dataDir, filename)
+    filename = os.path.join(directories.getDataDir(), filename)
     try:
         w, h, ndata = loadPNGFile(filename)
 
@@ -519,7 +507,7 @@ def TextInputRow(title, *args, **kw):
 
 def setWindowCaption(prefix):
     caption = display.get_caption()[0]
-    prefix = _(prefix)
+    prefix = tr(prefix)
     if type(prefix) == unicode:
         prefix = prefix.encode("utf8")
     class ctx:
@@ -536,16 +524,16 @@ def compareMD5Hashes(found_filters):
     for filter in found_filters:
         ff[filter.split('\\')[-1]] = filter
     try:
-        if not os.path.exists(os.path.join(directories.dataDir, "filters.json")):
+        if not os.path.exists(os.path.join(directories.getDataDir(), "filters.json")):
             filterDict = {}
             filterDict["filters"] = {}
-            with open(os.path.join(directories.dataDir, "filters.json"), 'w') as j:
+            with open(os.path.join(directories.getDataDir(), "filters.json"), 'w') as j:
                 json.dump(filterDict, j)
-        filterInBundledFolder = directories.getAllFilters(os.path.join(directories.dataDir, "filters"))
+        filterInBundledFolder = directories.getAllFilters(os.path.join(directories.getDataDir(), "filters"))
         filterBundle = {}
         for bundled in filterInBundledFolder:
             filterBundle[bundled.split('\\')[-1]] = bundled
-        hashJSON = json.load(open(os.path.join(directories.dataDir, "filters.json"), 'rb'))
+        hashJSON = json.load(open(os.path.join(directories.getDataDir(), "filters.json"), 'rb'))
         for filt in ff.keys():
             realName = filt
             if realName in filterBundle.keys():
@@ -557,22 +545,22 @@ def compareMD5Hashes(found_filters):
                         with open(filterBundle[realName]) as bundledFilter:
                             bundledData = bundledFilter.read()
                         if old_hash != hashlib.md5(bundledData).hexdigest() and bundledData != None:
-                            shutil.copy(filterBundle[realName], mcplatform.filtersDir)
+                            shutil.copy(filterBundle[realName], directories.filtersDir)
                             hashJSON["filters"][realName] = hashlib.md5(bundledData).hexdigest()
                         if old_hash != hashlib.md5(filterData).hexdigest() and hashlib.md5(filterData).hexdigest() != hashlib.md5(bundledData).hexdigest():
-                            shutil.copy(filterBundle[realName], mcplatform.filtersDir)
+                            shutil.copy(filterBundle[realName], directories.filtersDir)
                             hashJSON["filters"][realName] = hashlib.md5(bundledData).hexdigest()
                     else:
                         hashJSON["filters"][realName] = hashlib.md5(filterData).hexdigest()
         for bundled in filterBundle.keys():
             if bundled not in ff.keys():
-                shutil.copy(filterBundle[bundled], mcplatform.filtersDir)
+                shutil.copy(filterBundle[bundled], directories.filtersDir)
                 data = None
                 with open(filterBundle[bundled], 'r') as f:
                     data = f.read()
                 if data != None:
                     hashJSON[bundled] = hashlib.md5(data).hexdigest()
-        with open(os.path.join(directories.dataDir, "filters.json"), 'w') as done:
+        with open(os.path.join(directories.getDataDir(), "filters.json"), 'w') as done:
             json.dump(hashJSON, done)
     except Exception, e:
         print ('Error: {}'.format(e))
@@ -649,7 +637,7 @@ def showProgress(progressText, progressIterator, cancel=False):
             self.invalidate()
 
     widget = ProgressWidget()
-    widget.progressText = _(progressText)
+    widget.progressText = tr(progressText)
     widget.statusText = ""
     widget.progressAmount = 0.0
 

@@ -8,6 +8,7 @@ from albow.translate import _
 from pymclevel.box import Vector
 import config
 from glbackground import GLBackground
+import keys
 
 
 class NudgeButton(GLBackground):
@@ -27,7 +28,7 @@ class NudgeButton(GLBackground):
         # tooltipBacking.bg_color = (0, 0, 0, 0.6)
         keys = [config.config.get("Keys", k).upper() for k in ("Forward", "Back", "Left", "Right", "Up", "Down")]
 
-        nudgeLabel.tooltipText = _("Click and hold.  While holding, use the movement keys ({0}{1}{2}{3}{4}{5}) to nudge. Hold SHIFT to nudge faster.").format(
+        nudgeLabel.tooltipText = _("Click and hold.  While holding, use the movement keys ({0}/{1}/{2}/{3}/{4}/{5}) to nudge. Hold SHIFT to nudge faster.").format(
             *keys)
         # tooltipBacking.shrink_wrap()
 
@@ -38,7 +39,7 @@ class NudgeButton(GLBackground):
         self.get_root().mcedit.editor.focus_switch = None  # xxxx restore focus to editor better
 
     def key_down(self, evt):
-        keyname = key.name(evt.key)
+        keyname = keys.getKey(evt)
         if keyname == config.config.get("Keys", "Up"):
             self.nudge(Vector(0, 1, 0))
         if keyname == config.config.get("Keys", "Down"):

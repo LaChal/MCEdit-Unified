@@ -49,17 +49,13 @@ You need, a least, these three function in your program:
 
 import os
 import re
-import directories
-
+import locale
+# enc = locale.getdefaultlocale()[-1]
 enc = "utf8"
 
 string_cache = {}
-langPath = os.path.join(directories.dataDir, "lang")
-oldlang = "en_US" # en_US is the default language string, no exceptions.
-try:
-	oldlang = Settings.langCode.get()
-except:
-    pass
+langPath = os.sep.join((".", "lang"))
+lang = "Default"
 
 #-------------------------------------------------------------------------------
 # Translation loading and mapping functions
@@ -73,30 +69,37 @@ def _(string, doNotTranslate=False):
     return string_cache.get(string, string.replace("\n", "\n\n"))
 
 #-------------------------------------------------------------------------------
-def refreshLang(suppressAlert=False,build=True):
-    """Refreshes and returns the current language string"""
-    global oldlang
-    import config
-    from leveleditor import Settings
+def setLangPath(path):
+    """Changes the default 'lang' folder path. Retrun True if the path is valid, False otherwise."""
+    path = os.path.normpath(os.path.abspath(path))
+    if os.access(path, os.F_OK) and os.path.isdir(path) and os.access(path, os.R_OK):
+        global langPath
+        langPath = path
+        return True
+    else:
+        return False
 
-    try:
-        lang = Settings.langCode.get() #.langCode
-        isRealLang = verifyLangCode(lang)
-        if build:
-            buildTranslation(lang)
-        if not oldlang == lang and not suppressAlert and isRealLang:
-            import albow
-            albow.alert("You must restart MCEdit to see language changes")
-        elif not suppressAlert and not isRealLang:
-            import albow
-            albow.alert("{} is not a valid language".format(lang))
-        if not isRealLang:
-            Settings.langCode.set("en_US")
-        oldlang = lang
-        return lang
-    except Exception as inst:
-        print inst
-        return ""
+
+def getLangPath():
+    """..."""
+    return langPath
+
+#-------------------------------------------------------------------------------
+def getLang():
+    return lang
+
+def setLang(newlang):
+    """Set the actual language. Returns old and new languages and string_cache in a tulpe.
+
+    newlang: str: new laguage to load in the format <language>_>country>"""
+    global lang
+    oldLang = "" + lang
+    sc = {}
+    if not lang == newlang:
+        sc = buildTranslation(newlang)
+        lang = newlang
+    return oldLang, lang, sc
+
 #-------------------------------------------------------------------------------
 def correctEncoding(data, oldEnc="ascii", newEnc=enc):
     """Returns encoded/decoded data."""
@@ -107,22 +110,17 @@ def correctEncoding(data, oldEnc="ascii", newEnc=enc):
     if "\n" in data:
         data = data.replace("\n", "\n\n")
     return data
+
 #-------------------------------------------------------------------------------
-def verifyLangCode(lang):
-    fName = os.path.join(langPath, lang + ".trn")
-    if (os.access(fName, os.F_OK) and os.path.isfile(fName) and os.access(fName, os.R_OK)) or lang == "en_US":
-        return True
-    else:
-        return False
-#-------------------------------------------------------------------------------
-def buildTranslation(lang,suppressAlert=False):
+def buildTranslation(lang):
     """Finds the file corresponding to 'lang' builds up string_cache.
     If the file is not valid, does nothing.
     Errors encountered during the process are silently ignored.
     Returns string_cache."""
     global string_cache
+    lang = "%s"%lang
     fName = os.path.join(langPath, lang + ".trn")
-    if verifyLangCode(lang) and not lang == "en_US":
+    if os.access(fName, os.F_OK) and os.path.isfile(fName) and os.access(fName, os.R_OK):
         data = open(fName, "rb").read() + "\x00"
         trnPattern = re.compile(r"^o\d+[ ]|^t\d+[ ]", re.M|re.S)
         grps = re.finditer(trnPattern, data)
@@ -155,8 +153,9 @@ if __name__ == "__main__":
     ### FOR TEST
     import sys
 
-    for k, v in buildTranslation("template").items():
-        print k, v
-    sys.exit()
+    if setLangPath("."):
+        for k, v in buildTranslation("template").items():
+            print k, v
+        sys.exit()
     ###
 
